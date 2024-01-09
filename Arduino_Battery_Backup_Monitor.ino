@@ -60,7 +60,7 @@ void setup(void) {
 }
 
 // Functions
-int WriteToDB(float voltage, float amperage) {
+int WriteToDB(float voltage, float amperage, float remaining_ah) {
   WiFiClientSecure client;
   HTTPClient http;
   adcValue = analogRead(analogPin);
@@ -68,7 +68,7 @@ int WriteToDB(float voltage, float amperage) {
   client.setInsecure();  // Bypass SSL certificate verification
   http.addHeader("Content-Type", "application/json");
   String serverPath = "https://us-east-1.aws.data.mongodb-api.com/app/batteryupload-ayjsz/endpoint/BatteryUpdaterV3?secret=" + String(SECRET_MONGODBSECRET);
-  String body = "{\"shunt_drop_voltage\":" + String(voltage, 7) + ", \"calculated_amperage\":" + String(amperage, 7) + " , \"battery_name\":\"" + battery_name + "\"}";
+  String body = "{\"shunt_drop_voltage\":" + String(voltage, 7) + ", \"calculated_amperage\":" + String(amperage, 7) + " , \"battery_name\":\"" + battery_name + "\" , \"remaining_ah\":" + remaining_ah + "}";
   http.begin(client, serverPath.c_str());
   int httpResponseCode = http.POST(body);
   if (httpResponseCode > 0) {
@@ -143,18 +143,21 @@ void loop(void) {
   float coulombs = (elapsedms / 100) * amperage1;
 
   if (amperage1 <= 0){
-    chargeCoulomb(coulombs);
+    remaining_battery_columbs = chargeCoulomb(coulombs);
   }
   else{
-    consumeCoulomb(coulombs);
+    remaining_battery_columbs = consumeCoulomb(coulombs);
   }
 
+  float remaining_ah = remaining_battery_columbs / 3600;
 
   Serial.println("-----------------------------------------------------------");
-  Serial.print("Coulombs Between Measurements: ");
+  Serial.print("Coulombs: ");
   Serial.print(coulombs);
-  Serial.print(" Milliseconds Between Measurements: ");
+  Serial.print(" Milliseconds: ");
   Serial.print(elapsedms);
+  Serial.print(" Remaining Ah: ");
+  Serial.print(remaining_ah, 6);
   Serial.print(" Avg 1: ");
   Serial.print(String(avg1, 7));
   Serial.print("V ");
@@ -166,7 +169,7 @@ void loop(void) {
 
   
 
-  WriteToDB(avg1, amperage1);
+  WriteToDB(avg1, amperage1, remaining_ah);
   digitalWrite(LED1, LOW);
   delay(1000);
 }
