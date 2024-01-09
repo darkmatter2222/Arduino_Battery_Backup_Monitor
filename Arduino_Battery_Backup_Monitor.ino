@@ -25,6 +25,7 @@ float max_battery_columbs = (3600 * battery_capasity_ah);
 float min_battery_columbs = (3600 * 0);
 float remaining_battery_columbs = max_battery_columbs;
 String battery_name = "Fiber_Internet";
+String state = "Unknown";
 
 // setup
 void setup(void) {
@@ -60,7 +61,7 @@ void setup(void) {
 }
 
 // Functions
-int WriteToDB(float voltage, float amperage, float remaining_ah, String remaining_time) {
+int WriteToDB(float voltage, float amperage, float remaining_ah, String remaining_time, String state) {
   WiFiClientSecure client;
   HTTPClient http;
   adcValue = analogRead(analogPin);
@@ -68,7 +69,7 @@ int WriteToDB(float voltage, float amperage, float remaining_ah, String remainin
   client.setInsecure();  // Bypass SSL certificate verification
   http.addHeader("Content-Type", "application/json");
   String serverPath = "https://us-east-1.aws.data.mongodb-api.com/app/batteryupload-ayjsz/endpoint/BatteryUpdaterV3?secret=" + String(SECRET_MONGODBSECRET);
-  String body = "{\"shunt_drop_voltage\":" + String(voltage, 7) + ", \"calculated_amperage\":" + String(amperage, 7) + " , \"battery_name\":\"" + battery_name + "\" , \"remaining_ah\":" + String(remaining_ah, 6) + ", \"remaining_time\":\"" + remaining_time + "\"}";
+  String body = "{\"shunt_drop_voltage\":" + String(voltage, 7) + ", \"calculated_amperage\":" + String(amperage, 7) + " , \"battery_name\":\"" + battery_name + "\" , \"remaining_ah\":" + String(remaining_ah, 6) + ", \"remaining_time\":\"" + remaining_time + "\", \"state\":\"" + state + "\"}";
   http.begin(client, serverPath.c_str());
   int httpResponseCode = http.POST(body);
   if (httpResponseCode > 0) {
@@ -94,12 +95,14 @@ double approxRollingAverage(double avg, double new_sample) {
 double consumeCoulomb(float coulombs){
   if (remaining_battery_columbs <= min_battery_columbs) {
     Serial.println("Max Discharge");
+    state = "Max Discharge";
     remaining_battery_columbs = min_battery_columbs;
     return remaining_battery_columbs;
   }
   else{
     remaining_battery_columbs = remaining_battery_columbs - coulombs;
     Serial.println("Discharging...");
+    state = "Discharging";
     return remaining_battery_columbs;
   }
 }
@@ -107,12 +110,14 @@ double consumeCoulomb(float coulombs){
 double chargeCoulomb(float coulombs){
   if (remaining_battery_columbs >= max_battery_columbs) {
     Serial.println("Max Charge");
+    state = "Max Charge";
     remaining_battery_columbs = max_battery_columbs;
     return remaining_battery_columbs;
   }
   else{
     remaining_battery_columbs = remaining_battery_columbs - coulombs;
     Serial.println("Charging...");
+    state = "Charging";
     return remaining_battery_columbs;
   }
 }
@@ -191,7 +196,7 @@ void loop(void) {
 
   
 
-  WriteToDB(avg1, amperage1, remaining_ah, remaining_time);
+  WriteToDB(avg1, amperage1, remaining_ah, remaining_time, state);
   digitalWrite(LED1, LOW);
   delay(1000);
 }
