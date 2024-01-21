@@ -1,4 +1,4 @@
-// include
+// Includes
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
@@ -33,7 +33,7 @@ float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
 float shuntOhms = shuntDropMv / shuntAmp;
 float currentAverage = 0.0;
-float voltageAverage = 0.1;
+float voltageAverage = 0.0;
 
 // Function Prototypes
 void connectToWiFi(const char* ssid, const char* password);
@@ -79,12 +79,18 @@ void loop() {
       Serial.println("Starting...");
     }
 
+    // Calculate the current in amperes by dividing the average voltage by the shunt resistance
     float current = voltageAverage / shuntOhms;
-    float timeHours = measurementInterval / 3600000.0; // Convert ms to hours
+    // Convert the measurement interval from milliseconds to hours for capacity calculation
+    float timeHours = measurementInterval / 3600000.0;
+    // Calculate the amount of capacity (in ampere-hours) used in this measurement interval
     float usedCapacity = current * timeHours;
+    // Subtract the used capacity from the remaining battery capacity to update its value
     remainingCapacityAh -= usedCapacity;
+    // Constrain the remaining capacity to be within the range of 0 to the maximum battery capacity
+    remainingCapacityAh = constrain(remainingCapacityAh, 0.0, kBatteryCapacityAh);
+    // Calculate the remaining battery capacity as a percentage of the total capacity
     float remainingBatteryPercent = (remainingCapacityAh * 100) / batteryCapacityAh;
-
     // Calculate remaining battery life in hours
     float remainingBatteryLifeHours = (current != 0) ? (remainingCapacityAh / current) : 0;
     // Convert remaining battery life from hours to seconds
