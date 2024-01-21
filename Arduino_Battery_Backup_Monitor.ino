@@ -85,13 +85,12 @@ void loop() {
     remainingCapacityAh -= usedCapacity;
     float remainingBatteryPercent = (remainingCapacityAh * 100) / batteryCapacityAh;
 
-    float remainingBatteryLife = (remainingCapacityAh - ((current * measurementInterval) / 3.6e6)) * (60 / current);
-    // Convert remaining battery life to hours, minutes, and seconds
-    int hours = int(remainingBatteryLife / 60);
-    int minutes = int(remainingBatteryLife) % 60;
-    int seconds = int(remainingBatteryLife * 60) % 60;
-
-    String formattedElapsedTime = formatTime(seconds);
+    // Calculate remaining battery life in hours
+    float remainingBatteryLifeHours = (current != 0) ? (remainingCapacityAh / current) : 0;
+    // Convert remaining battery life from hours to seconds
+    long remainingBatteryLifeSeconds = static_cast<long>(remainingBatteryLifeHours * 3600);
+    // Format the remaining battery life in HH:MM:SS format
+    String formattedRemainingBatteryLife = formatTime(remainingBatteryLifeSeconds);
 
     Serial.println("-----------|-------");
     Serial.print("V:          "); Serial.println(String(voltage, 7));
@@ -99,9 +98,9 @@ void loop() {
     Serial.print("I:          "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
-    Serial.print("Remain Time:"); Serial.println(formattedElapsedTime);
+    Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
 
-    writeToDB(voltage, current, remainingCapacityAh, formattedElapsedTime, "", macAddress, ipAddress, remainingBatteryPercent);
+    writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent);
 
     digitalWrite(kLedPin, LOW);
     delay(1000);
