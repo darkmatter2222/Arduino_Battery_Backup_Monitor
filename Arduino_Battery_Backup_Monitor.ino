@@ -88,7 +88,7 @@ void loop() {
     // Subtract the used capacity from the remaining battery capacity to update its value
     remainingCapacityAh -= usedCapacity;
     // Constrain the remaining capacity to be within the range of 0 to the maximum battery capacity
-    remainingCapacityAh = constrain(remainingCapacityAh, 0.0, kBatteryCapacityAh);
+    remainingCapacityAh = constrain(remainingCapacityAh, 0.0, batteryCapacityAh);
     // Calculate the remaining battery capacity as a percentage of the total capacity
     float remainingBatteryPercent = (remainingCapacityAh * 100) / batteryCapacityAh;
     // Calculate remaining battery life in hours
