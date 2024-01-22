@@ -1,3 +1,22 @@
+/**
+ * @file main.cpp
+ * @brief Battery Monitoring and Data Logging System
+ *
+ * This program is designed to monitor battery usage by measuring the voltage drop across a shunt resistor
+ * using an ADS1115 Analog-to-Digital Converter. It calculates the current draw from the battery and
+ * computes the remaining battery capacity. The data is then uploaded to a database for tracking and analysis.
+ *
+ * The system is designed to be versatile for deployment in multiple scenarios. Upon initialization,
+ * it uses the unique MAC address of the device to download specific configurations for the particular
+ * deployment from a remote server. This approach allows for easy customization and scalability of the system.
+ *
+ * The development of this program involved leveraging OpenAI's GPT-4 for a significant portion of the code
+ * authoring, in collaboration with Ryan Susman, who contributed to the development and refinement of the system.
+ *
+ * @author Ryan Susman
+ * @date 2024-01-21
+ */
+
 // Includes
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
@@ -36,12 +55,25 @@ float currentAverage = 0.0;
 float voltageAverage = 0.0;
 
 // Function Prototypes
+// Connects to a WiFi network using the provided SSID and password
 void connectToWiFi(const char* ssid, const char* password);
+
+// Retrieves battery configuration data from a database using the MAC address
 void getBatteryConfig(const String& macAddress);
+
+// Initializes the ADS1115 Analog-to-Digital Converter (ADC)
 void initializeADS1115();
+
+// Takes a voltage measurement from a specified ADC pin
 float takeMeasurement(int adcPin);
+
+// Writes battery data to a database, including voltage, amperage, remaining capacity, and other details
 void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent);
+
+// Calculates a rolling average for a given sample and current average over a specified number of samples
 float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
+
+// Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
 
 void setup() {
