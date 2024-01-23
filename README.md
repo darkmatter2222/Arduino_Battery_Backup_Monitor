@@ -10,6 +10,14 @@ The Arduino Battery Backup Monitor is a sophisticated system designed to monitor
 - **Customizable Configurations:** Downloads specific configurations using the unique MAC address of the device.
 - **Data Visualization:** Utilizes MongoDB Charts for an interactive dashboard of battery status.
 
+## Demonstration Video
+
+For a detailed demonstration and explanation of the Arduino Battery Backup Monitor project, check out the following video:
+
+[![Arduino Battery Backup Monitor Demonstration](https://img.youtube.com/vi/NTwmsFVzf2c/0.jpg)](https://www.youtube.com/watch?v=NTwmsFVzf2c)  
+
+Click the image above to watch the video on YouTube.  
+
 ## Hardware Requirements
 - NodeMCU microcontroller (ESP8266)
 - ADS1115 Analog-to-Digital Converter
