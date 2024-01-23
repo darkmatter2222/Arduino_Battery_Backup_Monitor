@@ -37,10 +37,10 @@ Click the image above to watch the video on YouTube.
 ## Installation
 1. **Set Up Hardware:** Assemble the hardware components as per the circuit diagram.
 2. **Configure Software:** Update `arduino_secrets.h` with your WiFi credentials and MongoDB secret.
-3. **Compile and Upload:** Open `main.cpp` in Arduino IDE, compile the code, and upload it to the NodeMCU.
+3. **Compile and Upload:** Open `Arduino_Battery_Backup_Monitor.ino` in Arduino IDE, compile the code, and upload it to the NodeMCU.
 
 ## Code Structure
-- **main.cpp:** Main file containing the logic for battery monitoring and data uploading.
+- **Arduino_Battery_Backup_Monitor.ino:** Main file containing the logic for battery monitoring and data uploading.
 - **arduino_secrets.h:** Contains sensitive data like WiFi credentials and MongoDB API secret (not included for security reasons).
 
 ## Usage
