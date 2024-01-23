@@ -39,6 +39,14 @@ Click the image above to watch the video on YouTube.
 2. **Configure Software:** Update `arduino_secrets.h` with your WiFi credentials and MongoDB secret.
 3. **Compile and Upload:** Open `Arduino_Battery_Backup_Monitor.ino` in Arduino IDE, compile the code, and upload it to the NodeMCU.
 
+## Circuit Diagram
+
+A detailed circuit diagram is provided to help with the hardware setup of the Arduino Battery Backup Monitor. The diagram illustrates how the NodeMCU, ADS1115 Analog-to-Digital Converter, shunt resistor, and other components are interconnected.
+
+![Circuit Diagram](https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/circuit-diagram.png)
+
+Please refer to this diagram for accurate connections and setup to ensure the proper functioning of the system.  
+
 ## Code Structure
 - **Arduino_Battery_Backup_Monitor.ino:** Main file containing the logic for battery monitoring and data uploading.
 - **arduino_secrets.h:** Contains sensitive data like WiFi credentials and MongoDB API secret (not included for security reasons).
