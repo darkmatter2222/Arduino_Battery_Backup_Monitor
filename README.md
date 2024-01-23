@@ -61,4 +61,4 @@ The real-time data is visualized using MongoDB Charts, which can be accessed [he
 - Special thanks to Ryan Susman for his contributions to the development and refinement of this system.
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache License - see the LICENSE file for details.
