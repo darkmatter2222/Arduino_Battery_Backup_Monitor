@@ -138,25 +138,30 @@ void loop() {
     // Format the remaining battery life in HH:MM:SS format
     String formattedRemainingBatteryLife = formatTime(remainingBatteryLifeSeconds);
 
-    // Check if current exceeds 0.2 amps and smsEnabled
+    // Check if the SMS alert feature is enabled and if the current measurement conditions warrant an SMS alert.
     if (smsEnabled) {
+        // Check if the current exceeds the threshold of 0.2 amps.
         if (current > 0.2) {
-            currentExceeded = true; // Set flag when current exceeds threshold
-            if (!smsSent || smsTimer.hasPassed(7200000)) { // 7200000 milliseconds = 2 hours
-                // Replace with appropriate message and phone number
-                sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
-                smsSent = true; // Set flag to true
-                smsTimer.restart(); // Restart the timer
-            }
-        } else if (currentExceeded && current <= 0.2) {
-            // Current has dropped below 0.2 amps after exceeding it
-            currentExceeded = false; // Reset flag
+            currentExceeded = true; // Set a flag indicating that the current has exceeded the threshold.
 
+            // Check if an SMS has not been sent yet or if it has been more than 2 hours since the last SMS.
+            if (!smsSent || smsTimer.hasPassed(7200000)) { // 7200000 milliseconds = 2 hours
+                // Send an SMS message to alert that the current has exceeded 0.2 amps. Customize the message and recipient.
+                sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
+                smsSent = true; // Set the flag to indicate that an SMS has been sent.
+                smsTimer.restart(); // Restart the timer to track the interval for the next SMS alert.
+            }
+        } 
+        // Check if the current has dropped below 0.2 amps after having previously exceeded it.
+        else if (currentExceeded && current <= 0.2) {
+            currentExceeded = false; // Reset the flag as the current is now below the threshold.
+
+            // Check if an SMS was sent when the current exceeded the threshold.
             if (smsSent) {
-                // Replace with appropriate message and phone number
+                // Send an SMS message to alert that the current has dropped back below 0.2 amps. Customize the message and recipient.
                 sendTextMessage("Battery:" + batteryName + " Current has dropped below 0.2 Amps");
-                smsSent = false; // Reset flag so a new SMS can be sent when current goes above 0.2 Amps again
-                smsTimer.restart(); // Restart the timer
+                smsSent = false; // Reset the flag to allow a new SMS to be sent when the current goes above 0.2 amps again.
+                smsTimer.restart(); // Restart the timer for timing the next SMS alert.
             }
         }
     }

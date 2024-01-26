@@ -1,0 +1,12 @@
+{
+  "_id": {
+    "$oid": "65a728874176e7bcb54eaa54"
+  },
+  "mac_address": "00:00:00:00:00:00",
+  "battery_name": "Test",
+  "battery_capasity_ah": 9,
+  "shunt_amp": 20,
+  "shunt_drop_mv": 0.075,
+  "rollingAvgDistance": 5,
+  "smsEnabled": true
+}
