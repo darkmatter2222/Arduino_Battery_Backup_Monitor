@@ -35,6 +35,7 @@ const int kDefaultAvgDistance = 5;
 const float kShuntAmp = 20.0f; // 75 mV = 20 Amps
 const float kShuntDropMv = 0.075f;  // 75 millivolts
 const float kBatteryCapacityAh = 9.0f;
+const bool kSmsEnabled = true;
 
 // Global Variables
 WiFiClientSecure client;
@@ -53,6 +54,10 @@ float shuntDropMv = kShuntDropMv;  // 75 millivolts
 float shuntOhms = shuntDropMv / shuntAmp;
 float currentAverage = 0.0;
 float voltageAverage = 0.0;
+bool smsEnabled = kSmsEnabled;
+bool smsSent = false;
+bool currentExceeded = false;
+Chrono smsTimer;
 
 // Function Prototypes
 // Connects to a WiFi network using the provided SSID and password
@@ -75,6 +80,9 @@ float calculateRollingAverage(float currentAverage, float newSample, int sampleC
 
 // Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
+
+// Function to send a text message using Twilio API
+void sendTextMessage(const String& messageBody);
 
 void setup() {
     // Serial output
@@ -129,6 +137,29 @@ void loop() {
     long remainingBatteryLifeSeconds = static_cast<long>(remainingBatteryLifeHours * 3600);
     // Format the remaining battery life in HH:MM:SS format
     String formattedRemainingBatteryLife = formatTime(remainingBatteryLifeSeconds);
+
+    // Check if current exceeds 0.2 amps and smsEnabled
+    if (smsEnabled) {
+        if (current > 0.2) {
+            currentExceeded = true; // Set flag when current exceeds threshold
+            if (!smsSent || smsTimer.hasPassed(7200000)) { // 7200000 milliseconds = 2 hours
+                // Replace with appropriate message and phone number
+                sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
+                smsSent = true; // Set flag to true
+                smsTimer.restart(); // Restart the timer
+            }
+        } else if (currentExceeded && current <= 0.2) {
+            // Current has dropped below 0.2 amps after exceeding it
+            currentExceeded = false; // Reset flag
+
+            if (smsSent) {
+                // Replace with appropriate message and phone number
+                sendTextMessage("Battery:" + batteryName + " Current has dropped below 0.2 Amps");
+                smsSent = false; // Reset flag so a new SMS can be sent when current goes above 0.2 Amps again
+                smsTimer.restart(); // Restart the timer
+            }
+        }
+    }
 
     Serial.println("-----------|-------");
     Serial.print("V:          "); Serial.println(String(voltage, 7));
@@ -198,6 +229,7 @@ void getBatteryConfig(const String& macAddress) {
             shuntAmp = configDoc["shunt_amp"].as<float>();
             shuntDropMv = configDoc["shunt_drop_mv"].as<float>();
             rollingAvgDistance = configDoc["rollingAvgDistance"].as<int>();
+            smsEnabled = configDoc["smsEnabled"].as<bool>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
@@ -285,4 +317,34 @@ String formatTime(long seconds) {
     sprintf(formattedTime, "%02ld:%02ld:%02ld", hours, minutes, secs);
 
     return String(formattedTime);
+}
+
+// Function to send a text message using Twilio API
+void sendTextMessage(const String& messageBody) {
+    WiFiClientSecure client;
+    HTTPClient http;
+
+    client.setInsecure();  // Bypass SSL certificate verification
+
+    String serverPath = "https://api.twilio.com/2010-04-01/Accounts/" + String(SECRET_TWILIOUSERNAME) + "/Messages.json";
+
+    http.begin(client, serverPath);
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    http.setAuthorization(String(SECRET_TWILIOUSERNAME).c_str(), String(SECRET_TWILIOPASSWORD).c_str());
+
+    String postData = "To=" + String(SECRET_TWILIOTO) + "&From=" + String(SECRET_TWILIOFROM) + "&Body=" + messageBody;
+
+    int httpResponseCode = http.POST(postData);
+
+    if (httpResponseCode > 0) {
+        // Optionally handle the response content
+        String payload = http.getString();
+        Serial.println(payload);
+    } else {
+        Serial.print("HTTP POST request failed: ");
+        Serial.println(httpResponseCode);
+        // Handle the error appropriately
+    }
+
+    http.end();
 }
