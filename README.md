@@ -87,6 +87,7 @@ After successful deployment, the system will:
 - Connect to WiFi and download configuration based on the MAC address.
 - Begin monitoring battery health and uploading data to the cloud.
 - The battery status can be viewed in real-time using MongoDB Charts.
+- Send SMS notifications based on specific conditions such as low battery level or significant changes in battery health.
 
 ## Dashboard
 The real-time data is visualized using MongoDB Charts, which can be accessed [here](https://charts.mongodb.com/charts-homeautomation-snhch/public/dashboards/bce944aa-81ec-43b3-b50e-45cdf96755d5).
