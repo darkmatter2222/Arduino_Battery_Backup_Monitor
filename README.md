@@ -9,6 +9,7 @@ The Arduino Battery Backup Monitor is a sophisticated system designed to monitor
 - **Cloud Integration:** Uploads data to MongoDB for tracking and analysis.
 - **Customizable Configurations:** Downloads specific configurations using the unique MAC address of the device.
 - **Data Visualization:** Utilizes MongoDB Charts for an interactive dashboard of battery status.
+- **SMS Notifications:** Sends alerts via SMS based on predefined criteria, such as low battery level or significant changes in battery health.
 
 ## Demonstration Video
 
