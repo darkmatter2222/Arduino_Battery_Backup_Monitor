@@ -55,7 +55,7 @@ Please refer to this diagram for accurate connections and setup to ensure the pr
 
 The Arduino Battery Backup Monitor project uses a specific MongoDB document structure to store and manage the data collected from the battery backups. This structure is defined in the `Battery_Management_Template.json` file, and it includes several key fields:
 
-- `device_id`: A unique identifier for each monitoring device.
+- `device_id`: A unique identifier for each monitoring device. (Set by mongo when creating the document)  
 - `timestamp`: The date and time when the data was recorded, stored in ISO 8601 format.
 - `voltage`: The measured voltage of the battery in volts.
 - `current`: The current being drawn from the battery in amperes.
