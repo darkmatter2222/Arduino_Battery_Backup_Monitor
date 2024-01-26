@@ -35,7 +35,7 @@ const int kDefaultAvgDistance = 5;
 const float kShuntAmp = 20.0f; // 75 mV = 20 Amps
 const float kShuntDropMv = 0.075f;  // 75 millivolts
 const float kBatteryCapacityAh = 9.0f;
-const bool kSmsEnabled = true;
+const bool kSmsEnabled = false;
 
 // Global Variables
 WiFiClientSecure client;
