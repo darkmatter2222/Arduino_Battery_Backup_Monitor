@@ -95,6 +95,7 @@ The real-time data is visualized using MongoDB Charts, which can be accessed [he
 ## Resources
 - [NodeMCU on Amazon](https://www.amazon.com/s?k=node+mcu)
 - [ADS1115 on Amazon](https://www.amazon.com/s?k=ads1115)
+- [20 Amp Shunt on Amazon](https://www.amazon.com/s?k=shunt+20A+75mV)
 
 ## Acknowledgments
 - Development and code authoring involved leveraging OpenAI's GPT-4.
