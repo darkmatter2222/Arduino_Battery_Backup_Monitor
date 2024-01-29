@@ -53,7 +53,11 @@ Please refer to this diagram for accurate connections and setup to ensure the pr
 - **arduino_secrets.h:** Contains sensitive data like WiFi credentials and MongoDB API secret (not included for security reasons).
 
 ## MongoDB Document Structure
+  
+[![How To Build the battery backup monitor](https://img.youtube.com/vi/o8SodRMNmwI/0.jpg)](https://www.youtube.com/watch?v=o8SodRMNmwI)  
 
+Click the image above to watch the video on YouTube.  
+  
 The Arduino Battery Backup Monitor project uses a specific MongoDB document structure to store and manage the data collected from the battery backups. This structure is defined in the `Battery_Management_Template.json` file, and it includes several key fields:  
   
 ### Logging  
