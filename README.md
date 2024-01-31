@@ -44,7 +44,7 @@ Click the image above to watch the video on YouTube.
 
 A detailed circuit diagram is provided to help with the hardware setup of the Arduino Battery Backup Monitor. The diagram illustrates how the NodeMCU, ADS1115 Analog-to-Digital Converter, shunt resistor, and other components are interconnected.
 
-![PCB]([https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/circuit-diagram.png](https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/PCB.jpg)
+![PCB](https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/PCB.jpg)
 ![Circuit Diagram](https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/circuit-diagram.png)
 
 Please refer to this diagram for accurate connections and setup to ensure the proper functioning of the system.  
