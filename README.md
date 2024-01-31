@@ -51,6 +51,8 @@ A detailed circuit diagram is provided to help with the hardware setup of the Ar
 
 Please refer to this diagram for accurate connections and setup to ensure the proper functioning of the system.  
 
+![PCB V2](https://github.com/darkmatter2222/Arduino_Battery_Backup_Monitor/blob/main/images/PCBV2.jpg)  
+
 ## Code Structure
 - **Arduino_Battery_Backup_Monitor.ino:** Main file containing the logic for battery monitoring and data uploading.
 - **arduino_secrets.h:** Contains sensitive data like WiFi credentials and MongoDB API secret (not included for security reasons).
