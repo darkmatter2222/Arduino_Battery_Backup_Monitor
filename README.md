@@ -1,5 +1,8 @@
 # Arduino Battery Backup Monitor
 
+## 🌟 Star Us: Light Up Our Sky!
+If you're enjoying the Arduino Battery Backup Monitor project, show your support by giving us a star! Your star is like a little beacon of appreciation that keeps our team motivated and helps others discover our work. Click the Star button at the top of the page and make our constellation brighter!
+  
 ## Overview
 The Arduino Battery Backup Monitor is a sophisticated system designed to monitor the health of several battery backups in a house and upload the status to MongoDB Cloud. It leverages a NodeMCU microcontroller in conjunction with an ADS1115 Analog-to-Digital Converter for accurate voltage measurements. The system is versatile and scalable, with configurations that can be customized for different deployment scenarios.
 
