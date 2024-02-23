@@ -22,6 +22,10 @@ For a detailed demonstration and explanation of the Arduino Battery Backup Monit
 
 Click the image above to watch the video on YouTube.  
 
+## 3D STL Files
+[thingiverse](https://www.thingiverse.com/thing:6498852)  
+
+  
 ## Hardware Requirements
 - NodeMCU microcontroller (ESP8266)
 - ADS1115 Analog-to-Digital Converter
