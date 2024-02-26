@@ -186,7 +186,7 @@ void loop() {
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
 
     if (writeRecordingsToDB){
-        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent);
+        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -285,7 +285,7 @@ float takeMeasurement(int adcPin) {
   return volts;
 }
 
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent) {
+void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState) {
     WiFiClientSecure client;
     HTTPClient http;
 
@@ -303,6 +303,7 @@ void writeToDB(float voltage, float amperage, float remainingAh, const String& r
     doc["mac_address"] = macAddress;
     doc["ip_address"] = ipAddress;
     doc["remaining_percent"] = remainingPercent;
+    doc["batteryState"] = batteryState;
 
     String jsonString;
     serializeJson(doc, jsonString);
