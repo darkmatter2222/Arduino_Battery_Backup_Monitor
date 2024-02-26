@@ -36,6 +36,10 @@ const float kShuntAmp = 20.0f; // 75 mV = 20 Amps
 const float kShuntDropMv = 0.075f;  // 75 millivolts
 const float kBatteryCapacityAh = 9.0f;
 const bool kSmsEnabled = false;
+const float kDischargingThresholdAmps = 0.2f;
+const float kChargingThresholdAmps = 0.2f;
+const bool kWriteRecordingsToDB = true;
+
 
 // Global Variables
 WiFiClientSecure client;
@@ -55,6 +59,10 @@ float shuntOhms = shuntDropMv / shuntAmp;
 float currentAverage = 0.0;
 float voltageAverage = 0.0;
 bool smsEnabled = kSmsEnabled;
+float dischargingThresholdAmps = kDischargingThresholdAmps;
+float chargingThresholdAmps = kChargingThresholdAmps;
+bool writeRecordingsToDB = kWriteRecordingsToDB;
+
 bool smsSent = false;
 bool currentExceeded = false;
 Chrono smsTimer;
@@ -141,7 +149,7 @@ void loop() {
     // Check if the SMS alert feature is enabled and if the current measurement conditions warrant an SMS alert.
     if (smsEnabled) {
         // Check if the current exceeds the threshold of 0.2 amps.
-        if (current > 0.2) {
+        if (current > dischargingThresholdAmps) {
             currentExceeded = true; // Set a flag indicating that the current has exceeded the threshold.
 
             // Check if an SMS has not been sent yet or if it has been more than 2 hours since the last SMS.
@@ -153,7 +161,7 @@ void loop() {
             }
         } 
         // Check if the current has dropped below 0.2 amps after having previously exceeded it.
-        else if (currentExceeded && current <= 0.2) {
+        else if (currentExceeded && current <= chargingThresholdAmps) {
             currentExceeded = false; // Reset the flag as the current is now below the threshold.
 
             // Check if an SMS was sent when the current exceeded the threshold.
@@ -173,8 +181,10 @@ void loop() {
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
-
-    writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent);
+    
+    if (writeRecordingsToDB){
+        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent);
+    }
 
     digitalWrite(kLedPin, LOW);
     delay(1000);
@@ -235,6 +245,9 @@ void getBatteryConfig(const String& macAddress) {
             shuntDropMv = configDoc["shunt_drop_mv"].as<float>();
             rollingAvgDistance = configDoc["rollingAvgDistance"].as<int>();
             smsEnabled = configDoc["smsEnabled"].as<bool>();
+            dischargingThresholdAmps = configDoc["dischargingThresholdAmps"].as<float>();
+            chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
+            writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
