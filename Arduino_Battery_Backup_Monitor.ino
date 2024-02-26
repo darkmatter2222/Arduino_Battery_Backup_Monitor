@@ -66,6 +66,7 @@ bool writeRecordingsToDB = kWriteRecordingsToDB;
 bool smsSent = false;
 bool currentExceeded = false;
 Chrono smsTimer;
+String batteryState = "Charging";
 
 // Function Prototypes
 // Connects to a WiFi network using the provided SSID and password
@@ -157,6 +158,7 @@ void loop() {
                 // Send an SMS message to alert that the current has exceeded 0.2 amps. Customize the message and recipient.
                 sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
                 smsSent = true; // Set the flag to indicate that an SMS has been sent.
+                batteryState = "Discharging";
                 smsTimer.restart(); // Restart the timer to track the interval for the next SMS alert.
             }
         } 
@@ -169,6 +171,7 @@ void loop() {
                 // Send an SMS message to alert that the current has dropped back below 0.2 amps. Customize the message and recipient.
                 sendTextMessage("Battery:" + batteryName + " Current has dropped below 0.2 Amps");
                 smsSent = false; // Reset the flag to allow a new SMS to be sent when the current goes above 0.2 amps again.
+                batteryState = "Charging";
                 smsTimer.restart(); // Restart the timer for timing the next SMS alert.
             }
         }
@@ -181,7 +184,7 @@ void loop() {
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
-    
+
     if (writeRecordingsToDB){
         writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent);
     }
