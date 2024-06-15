@@ -26,6 +26,7 @@
 #include <Chrono.h>
 #include <ArduinoJson.h>
 #include "arduino_secrets.h"
+#include <time.h>
 
 // Constants
 const int kLedPin = 2;
@@ -39,6 +40,11 @@ const bool kSmsEnabled = false;
 const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
+// Add these global constants near your other constants
+const float kWinterRate = 7.7331;  // cents per kWh
+const float kSummerBaseRate = 8.2626;  // cents per kWh for the first 650 kWh
+const float kSummerSecondRate = 13.7239;  // additional rate for the next 350 kWh
+const float kSummerOverRate = 14.2043;  // rate for consumption over 1000 kWh
 
 
 // Global Variables
@@ -103,6 +109,14 @@ void setup() {
     // Set up ADC (ADS1115)
     pinMode(kLedPin, OUTPUT);
     initializeADS1115();
+
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // Configure NTP (you might need to adjust this for your timezone)
+    Serial.println("Waiting for time sync...");
+    while (!time(nullptr)) {
+        Serial.print(".");
+        delay(1000);
+    }
+    Serial.println("\nTime synchronized");
 
     Serial.println("Starting...");
     // Setup complete!
@@ -177,6 +191,16 @@ void loop() {
         }
     }
 
+    float powerCost = -1;
+
+    if (current < 0) {
+        // Calculate power used in kWh
+        float powerUsedKWh = (voltageAverage * (-current) * timeHours) / 1000.0; // Multiply by -1 to make current positive for calculation
+
+        // Calculate power cost for this interval
+        powerCost = calculatePowerCost(powerUsedKWh); // calculated in cents per kWh.
+    }
+
     Serial.println("-----------|-------");
     Serial.print("V:          "); Serial.println(String(voltage, 7));
     Serial.print("Avg V:      "); Serial.println(String(voltageAverage, 7));
@@ -184,9 +208,10 @@ void loop() {
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
+    Serial.print("Power Cost:"); Serial.println(powerCost);
 
     if (writeRecordingsToDB){
-        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
+        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, powerCost);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -285,7 +310,7 @@ float takeMeasurement(int adcPin) {
   return volts;
 }
 
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState) {
+void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float powerCost) {
     WiFiClientSecure client;
     HTTPClient http;
 
@@ -304,6 +329,7 @@ void writeToDB(float voltage, float amperage, float remainingAh, const String& r
     doc["ip_address"] = ipAddress;
     doc["remaining_percent"] = remainingPercent;
     doc["batteryState"] = batteryState;
+    doc["power_cost"] = powerCost; // calculated in cents per kWh.
 
     String jsonString;
     serializeJson(doc, jsonString);
@@ -369,4 +395,31 @@ void sendTextMessage(const String& messageBody) {
     }
 
     http.end();
+}
+
+// Utility function to get the current rate based on the month
+float getCurrentRate() {
+    if (isSummer(month())) {  // Assuming month() returns the current month as an int
+        return kSummerBaseRate;
+    } else {
+        return kWinterRate;
+    }
+}
+
+// Calculate the cost of power used in a given interval
+float calculatePowerCost(float powerUsedKWh) {
+    float currentRate = getCurrentRate();
+    return (powerUsedKWh * currentRate) / 100;  // Convert cents to dollars
+}
+
+int month() {
+    time_t now = time(nullptr);  // Get the current time as a time_t object
+    struct tm *timeStruct = localtime(&now);  // Convert time to struct tm form
+
+    return timeStruct->tm_mon + 1;  // tm_mon is months since January (0-11), so add 1 for human-readable months (1-12)
+}
+
+bool isSummer(int month) {
+    // Summer months are June to September (6 to 9)
+    return month >= 6 && month <= 9;
 }
