@@ -196,7 +196,6 @@ void loop() {
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
     Serial.print("Battery V:"); Serial.println((takeMeasurement(0) * 13.35) / 0.23);
-    
 
     if (writeRecordingsToDB){
         writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
