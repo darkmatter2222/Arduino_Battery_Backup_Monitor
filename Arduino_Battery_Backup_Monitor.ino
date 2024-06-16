@@ -31,7 +31,8 @@
 // Constants
 const int kLedPin = 2;
 const int kAnalogPin = A0;
-const int kAdcPin = 1;
+const int kShuntVoltageAdcPin = 1;
+const int kBatteryVoltageAdcPin = 0;
 const int kDefaultAvgDistance = 5;
 const float kShuntAmp = 20.0f; // 75 mV = 20 Amps
 const float kShuntDropMv = 0.075f;  // 75 millivolts
@@ -40,6 +41,8 @@ const bool kSmsEnabled = false;
 const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
+const float kWBatteryVVdevide_R1 = 57000.0; // Resistance of R1 in ohms, 12v battery
+const float kWBatteryVVdevide_R2 = 1000.0;  // Resistance of R2 in ohms, 12v battery
 
 
 // Global Variables
@@ -58,11 +61,13 @@ float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
 float shuntOhms = shuntDropMv / shuntAmp;
 float currentAverage = 0.0;
-float voltageAverage = 0.0;
+float shuntVoltageAverage = 0.0;
 bool smsEnabled = kSmsEnabled;
 float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
+float batteryVVdevide_R1 = kWBatteryVVdevide_R1;
+float batteryVVdevide_R2 = kWBatteryVVdevide_R2;
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -82,8 +87,8 @@ void initializeADS1115();
 // Takes a voltage measurement from a specified ADC pin
 float takeMeasurement(int adcPin);
 
-// Writes battery data to a database, including voltage, amperage, remaining capacity, and other details
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent);
+// Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent);
 
 // Calculates a rolling average for a given sample and current average over a specified number of samples
 float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
@@ -102,14 +107,6 @@ void setup() {
     // using the mac_address, pull the configurations for this deployment from MongoDB
     getBatteryConfig(macAddress);
 
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // Configure NTP (you might need to adjust this for your timezone)
-    Serial.println("Waiting for time sync...");
-    while (!time(nullptr)) {
-        Serial.print(".");
-        delay(1000);
-    }
-    Serial.println("\nTime synchronized");
-
     // Set up ADC (ADS1115)
     pinMode(kLedPin, OUTPUT);
 
@@ -123,12 +120,18 @@ int startup_loop = 0;
 
 void loop() {
     digitalWrite(kLedPin, HIGH);
-
+    
+    // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
-    float voltage = takeMeasurement(kAdcPin);
+    float shuntVoltage = takeMeasurement(kShuntVoltageAdcPin);
+
+    // Calculate the actual battery voltage using the voltage divider formula
+    float batteryVoltageMeasured = takeMeasurement(kBatteryVoltageAdcPin);
+    float batteryVoltage = batteryVoltageMeasured * (batteryVVdevide_R1 + batteryVVdevide_R2) / batteryVVdevide_R2;
+
     myChrono.restart();
 
-    voltageAverage = calculateRollingAverage(voltageAverage, voltage, rollingAvgDistance);
+    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, shuntVoltage, rollingAvgDistance);
 
     if (startup_loop < rollingAvgDistance) {
       startup_loop++;
@@ -140,7 +143,7 @@ void loop() {
     }
 
     // Calculate the current in amperes by dividing the average voltage by the shunt resistance
-    float current = voltageAverage / shuntOhms;
+    float current = shuntVoltageAverage / shuntOhms;
     // Convert the measurement interval from milliseconds to hours for capacity calculation
     float timeHours = measurementInterval / 3600000.0;
     // Calculate the amount of capacity (in ampere-hours) used in this measurement interval
@@ -189,17 +192,18 @@ void loop() {
     }
 
     Serial.println("-----------|-------");
-    Serial.print("V:          "); Serial.println(String(voltage, 7));
-    Serial.print("Avg V:      "); Serial.println(String(voltageAverage, 7));
-    Serial.print("I:          "); Serial.println(String(current, 7));
+    Serial.print("Shunt V:    "); Serial.println(String(shuntVoltage, 7));
+    Serial.print("Avg Shunt V:"); Serial.println(String(shuntVoltageAverage, 7));
+    Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
-    Serial.print("Pin 0 Raw:"); Serial.println(takeMeasurement(0)); // Testing
-    Serial.print("Battery V:"); Serial.println((takeMeasurement(0) * 13.35) / 0.23); // Testing
+    Serial.print("Pin 0 Raw:"); Serial.println(String(takeMeasurement(0), 7)); // Testing
+
+    Serial.print("Battery V:"); Serial.println(String(batteryVoltage, 7)); // Testing
 
     if (writeRecordingsToDB){
-        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
+        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -264,6 +268,8 @@ void getBatteryConfig(const String& macAddress) {
             dischargingThresholdAmps = configDoc["dischargingThresholdAmps"].as<float>();
             chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
             writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
+            batteryVVdevide_R1 = configDoc["battery_v_vdevide_R1"].as<float>();
+            batteryVVdevide_R2 = configDoc["battery_v_vdevide_R2"].as<float>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
@@ -298,7 +304,7 @@ float takeMeasurement(int adcPin) {
   return volts;
 }
 
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState) {
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState) {
     WiFiClientSecure client;
     HTTPClient http;
 
@@ -308,7 +314,7 @@ void writeToDB(float voltage, float amperage, float remainingAh, const String& r
 
     StaticJsonDocument<200> doc;
     doc["battery_name"] = batteryName;
-    doc["voltage"] = voltage;
+    doc["shuntVoltage"] = shuntVoltage;
     doc["amperage"] = amperage;
     doc["remaining_ah"] = remainingAh;
     doc["remaining_time"] = remainingTime;
