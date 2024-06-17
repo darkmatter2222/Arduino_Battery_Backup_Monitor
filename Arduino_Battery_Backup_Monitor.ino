@@ -27,6 +27,7 @@
 #include <ArduinoJson.h>
 #include "arduino_secrets.h"
 #include <time.h>
+#include <SPI.h>
 
 // Constants
 const int kLedPin = 2;
