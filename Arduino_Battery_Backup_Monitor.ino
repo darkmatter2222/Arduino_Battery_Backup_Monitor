@@ -216,17 +216,15 @@ void loop() {
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
     Serial.print("Battery V:"); Serial.println(String(batteryVoltage, 7)); // Testing
     clearScreen();
-    String s1 = "Shunt V:" + String(shuntVoltage, 7);
-    String s2 = "Batty V:" + String(batteryVoltage, 7);
-    String s3 = "Shunt I:" + String(current, 7);
-    String s4 = "Time:" + formattedRemainingBatteryLife;
-    String s5 = "%:" + String(remainingBatteryPercent, 2);
+    String s1 = "Batty V:" + String(batteryVoltage, 7);
+    String s2 = "Shunt I:" + String(current, 7);
+    String s3 = "Time:" + formattedRemainingBatteryLife;
+    String s4 = "%:" + String(remainingBatteryPercent, 2);
 
     setScreen(s1, 0);
     setScreen(s2, 1);
     setScreen(s3, 2);
     setScreen(s4, 3);
-    setScreen(s5, 4);
 
     if (writeRecordingsToDB){
         writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
