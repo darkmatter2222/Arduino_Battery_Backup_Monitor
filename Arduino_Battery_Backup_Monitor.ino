@@ -218,9 +218,11 @@ void loop() {
     clearScreen();
     String s1 = "Shunt V:" + String(shuntVoltage, 7);
     String s2 = "Batty V:" + String(batteryVoltage, 7);
+    String s3 = "Shunt I:" + String(current, 7);
 
     setScreen(s1, 0);
     setScreen(s2, 1);
+    setScreen(s3, 2);
 
     if (writeRecordingsToDB){
         writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
