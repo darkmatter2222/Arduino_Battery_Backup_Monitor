@@ -93,7 +93,8 @@ void getBatteryConfig(const String& macAddress);
 void initializeOLED();
 
 // Set OLED Screen
-void setScreen(String text);
+void setScreen(String text, int line);
+void clearScreen();
 
 // Initializes the ADS1115 Analog-to-Digital Converter (ADC)
 void initializeADS1115();
@@ -214,7 +215,9 @@ void loop() {
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
     Serial.print("Battery V:"); Serial.println(String(batteryVoltage, 7)); // Testing
-    setScreen(String(shuntVoltage, 7));
+    clearScreen();
+    setScreen(String(shuntVoltage, 7), 0);
+    setScreen(String(batteryVoltage, 7), 1);
 
     if (writeRecordingsToDB){
         writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
@@ -307,11 +310,17 @@ void initializeOLED() {
     }
 }
 
-void setScreen(String text) {
+void clearScreen() {
     display.clearDisplay();
     display.setTextSize(1);      // Normal 1:1 pixel scale
     display.setTextColor(WHITE); // Draw white text
-    display.setCursor(0,0);      // Start at top-left corner
+
+    display.display();
+}
+
+void setScreen(String text, int line) {
+
+    display.setCursor(line,0);      // Start at top-left corner
     display.println(text);
     
     display.display();
