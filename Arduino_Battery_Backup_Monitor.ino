@@ -320,7 +320,7 @@ void clearScreen() {
 
 void setScreen(String text, int line) {
 
-    display.setCursor(line,0);      // Start at top-left corner
+    display.setCursor(0,line);      // Start at top-left corner
     display.println(text);
     
     display.display();
