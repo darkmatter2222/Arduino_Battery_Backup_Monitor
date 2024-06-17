@@ -120,7 +120,7 @@ int startup_loop = 0;
 
 void loop() {
     digitalWrite(kLedPin, HIGH);
-    
+
     // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
     float shuntVoltage = takeMeasurement(kShuntVoltageAdcPin);
@@ -198,8 +198,6 @@ void loop() {
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
-    Serial.print("Pin 0 Raw:"); Serial.println(String(takeMeasurement(0), 7)); // Testing
-
     Serial.print("Battery V:"); Serial.println(String(batteryVoltage, 7)); // Testing
 
     if (writeRecordingsToDB){
