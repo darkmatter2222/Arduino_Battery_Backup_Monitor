@@ -30,6 +30,10 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS D3  // Pin D2 on NodeMCU connected to the data line of DS18B20
 
 // Constants
 const int kLedPin = 2;
@@ -81,6 +85,9 @@ String batteryState = "Charging";
 
 // Declaration for an SSD1306 display connected to I2C (SCL, SDA pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+// Temp Setup
+OneWire oneWire(ONE_WIRE_BUS);  // Create a OneWire instance
+DallasTemperature sensors(&oneWire);  // Pass the OneWire reference to Dallas Temperature library
 
 // Function Prototypes
 // Connects to a WiFi network using the provided SSID and password
@@ -91,6 +98,9 @@ void getBatteryConfig(const String& macAddress);
 
 // Initalize the OLED Screen
 void initializeOLED();
+
+// get temp of env
+float getTemp();
 
 // Set OLED Screen
 void setScreen(String text, int line);
@@ -125,7 +135,7 @@ void setup() {
     pinMode(kLedPin, OUTPUT);
     // Set up the OLED
     initializeOLED();
-
+ 
     initializeADS1115();
 
     Serial.println("Starting...");
@@ -214,7 +224,9 @@ void loop() {
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
     Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
-    Serial.print("Battery V:"); Serial.println(String(batteryVoltage, 7)); // Testing
+    Serial.print("Battery V:  "); Serial.println(String(batteryVoltage, 7)); // Testing
+    Serial.print("Temp C:    "); Serial.println(getTemp()); // Testing
+
     clearScreen();
     String s1 = "Batty V:" + String(batteryVoltage, 7);
     String s2 = "Shunt I:" + String(current, 7);
@@ -315,6 +327,11 @@ void initializeOLED() {
     else {
       Serial.println(F("SSD1306 allocation success"));
     }
+}
+
+float getTemp() {
+    sensors.requestTemperatures();  // Send the command to get temperatures
+    return sensors.getTempCByIndex(0); // temp in Celsius
 }
 
 void clearScreen() {
