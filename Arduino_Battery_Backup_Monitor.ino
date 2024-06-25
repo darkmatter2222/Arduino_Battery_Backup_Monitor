@@ -91,7 +91,7 @@ DallasTemperature sensors(&oneWire);  // Pass the OneWire reference to Dallas Te
 
 // Function Prototypes
 // Connects to a WiFi network using the provided SSID and password
-void connectToWiFi(const char* ssid, const char* password);
+void connectToWiFi(const char* ssid, const char* password, int maxRetries);
 
 // Retrieves battery configuration data from a database using the MAC address
 void getBatteryConfig(const String& macAddress);
@@ -103,7 +103,8 @@ void initializeOLED();
 float getTemp();
 
 // Set OLED Screen
-void setScreen(String text, int line);
+void writeOledLine(String text, int line);
+void setScreen(String lineOne, String lineTwo, String lineThree, String lineFour);
 void clearScreen();
 
 // Initializes the ADS1115 Analog-to-Digital Converter (ADC)
@@ -125,18 +126,27 @@ String formatTime(long seconds);
 void sendTextMessage(const String& messageBody);
 
 void setup() {
+    // Set up the OLED
+    initializeOLED();
+    clearScreen();
+    // Print State
+    setScreen("WiFi:Connecting","","","");
     // Serial output
     Serial.begin(115200);
     // Connect to WiFi (SSID and Password in arduino_secrets.h)
-    connectToWiFi(SECRET_SSID, SECRET_PASS);
+    connectToWiFi(SECRET_SSID, SECRET_PASS, 5);  // Retry up to 5 times
+    // Print State
+    setScreen("WiFi:Connected","Configs:Downloading","","");
     // using the mac_address, pull the configurations for this deployment from MongoDB
     getBatteryConfig(macAddress);
+    // Print State
+    setScreen("WiFi:Connected","Configs:Downloaded","ADS:Initializing","");
     // Set up ADC (ADS1115)
     pinMode(kLedPin, OUTPUT);
-    // Set up the OLED
-    initializeOLED();
  
     initializeADS1115();
+    // Print State
+    setScreen("WiFi:Connected","Configs:Downloaded","ADS:Initialized","");
 
     Serial.println("Starting...");
     // Setup complete!
@@ -233,10 +243,7 @@ void loop() {
     String s3 = "Time   :" + formattedRemainingBatteryLife;
     String s4 = "Batty %:" + String(remainingBatteryPercent, 2);
 
-    setScreen(s1, 0);
-    setScreen(s2, 1);
-    setScreen(s3, 2);
-    setScreen(s4, 3);
+    setScreen(s1, s2, s3, s4);
 
     if (writeRecordingsToDB){
         writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
@@ -247,23 +254,43 @@ void loop() {
 }
 
 // Function to connect to WiFi
-void connectToWiFi(const char* ssid, const char* password) {
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
+void connectToWiFi(const char* ssid, const char* password, int maxRetries = 5) {
+    int retryCount = 0;
+    bool connected = false;
 
-    WiFi.begin(ssid, password);
+    Serial.print("Attempting to connect to WiFi");
 
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
+    while (retryCount < maxRetries && !connected) {
+        WiFi.begin(ssid, password);  // Start the connection process
+
+        // Wait for connection
+        for (int i = 0; i < 10; i++) {  // Wait 5 seconds for connection
+            if (WiFi.status() == WL_CONNECTED) {
+                connected = true;
+                break;
+            }
+            delay(500);
+            Serial.print(".");
+        }
+
+        if (connected) {
+            break;
+        }
+
+        retryCount++;
+        Serial.println("\nRetry " + String(retryCount) + "/" + String(maxRetries));
     }
 
-    ipAddress = WiFi.localIP().toString();
-    macAddress = WiFi.macAddress();
-    Serial.println("");
-    Serial.print("WiFi connected");
-    Serial.print("IP address: "); Serial.println(ipAddress);
-    Serial.print("MAC address: "); Serial.println(macAddress);
+    if (connected) {
+        ipAddress = WiFi.localIP().toString();
+        macAddress = WiFi.macAddress();
+        Serial.println("\nWiFi connected");
+        Serial.print("IP address: "); Serial.println(ipAddress);
+        Serial.print("MAC address: "); Serial.println(macAddress);
+    } else {
+        Serial.println("\nFailed to connect to WiFi after retries. Rebooting...");
+        ESP.restart();  // Reboot the microcontroller
+    }
 }
 
 // Function to get battery configuration
@@ -342,11 +369,17 @@ void clearScreen() {
     display.display();
 }
 
-void setScreen(String text, int line) {
-
+void writeOledLine(String text, int line){
     display.setCursor(0, line * 8);      // Start at top-left corner
     display.println(text);
-    
+}
+
+void setScreen(String lineOne, String lineTwo, String lineThree, String lineFour) {
+    clearScreen();
+    writeOledLine(lineOne, 0);
+    writeOledLine(lineTwo, 1);
+    writeOledLine(lineThree, 2);
+    writeOledLine(lineFour, 3);
     display.display();
 }
 
