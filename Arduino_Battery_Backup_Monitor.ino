@@ -320,6 +320,7 @@ void getBatteryConfig(const String& macAddress) {
             Serial.print("deserializeJson() failed: ");
             Serial.println(error.c_str());
             // Handle the deserialization error (e.g., set default values or take appropriate action)
+            ESP.restart();  // Restart the ESP if the HTTP request fails
         } else {
             // Update global variables based on the configuration data
             batteryName = configDoc["battery_name"].as<String>();
@@ -340,6 +341,7 @@ void getBatteryConfig(const String& macAddress) {
         Serial.print("HTTP POST request failed: ");
         Serial.println(httpResponseCode);
         // Handle the HTTP request error (e.g., set default values or take appropriate action)
+        ESP.restart();  // Restart the ESP if the HTTP request fails
     }
 
     http.end();
