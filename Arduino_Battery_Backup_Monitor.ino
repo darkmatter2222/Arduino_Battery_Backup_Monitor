@@ -311,7 +311,7 @@ void getBatteryConfig(const String& macAddress) {
     http.begin(client, serverPath.c_str());
     int httpResponseCode = http.POST(jsonString);
 
-    if (httpResponseCode > 0) {
+    if (httpResponseCode == 200) {
         String payload = http.getString();
         // Serial.println(payload);
         DeserializationError error = deserializeJson(configDoc, payload);
