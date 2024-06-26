@@ -48,10 +48,7 @@ const bool kSmsEnabled = false;
 const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
-// const float kWBatteryVVdevide_R1 = 57000.0; // Resistance of R1 in ohms, 12v battery
-// const float kWBatteryVVdevide_R2 = 1000.0;  // Resistance of R2 in ohms, 12v battery
-const float kWBatteryVVdevide_R1 = 102500.0; // Resistance of R1 in ohms, 24v battery (3296 potentiometer voltage divider)
-const float kWBatteryVVdevide_R2 = 2563.0;  // Resistance of R2 in ohms, 24v battery (3296 potentiometer voltage divider)
+const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels
 const int SCREEN_HEIGHT = 32; // OLED display height, in pixels
 
@@ -77,8 +74,7 @@ bool smsEnabled = kSmsEnabled;
 float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
-float batteryVVdevide_R1 = kWBatteryVVdevide_R1;
-float batteryVVdevide_R2 = kWBatteryVVdevide_R2;
+float maxBatteryVoltage = kMaxBatteryVoltage;
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -165,7 +161,7 @@ void loop() {
 
     // Calculate the actual battery voltage using the voltage divider formula
     float batteryVoltageMeasured = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = batteryVoltageMeasured * (batteryVVdevide_R1 + batteryVVdevide_R2) / batteryVVdevide_R2;
+    float batteryVoltage = (batteryVoltageMeasured * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
 
     myChrono.restart();
 
@@ -334,8 +330,7 @@ void getBatteryConfig(const String& macAddress) {
             dischargingThresholdAmps = configDoc["dischargingThresholdAmps"].as<float>();
             chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
             writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
-            batteryVVdevide_R1 = configDoc["battery_v_vdevide_R1"].as<float>();
-            batteryVVdevide_R2 = configDoc["battery_v_vdevide_R2"].as<float>();
+            maxBatteryVoltage = configDoc["maxBatteryVoltage"].as<float>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
