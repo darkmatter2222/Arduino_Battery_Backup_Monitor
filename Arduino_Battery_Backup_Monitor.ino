@@ -48,8 +48,10 @@ const bool kSmsEnabled = false;
 const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
-const float kWBatteryVVdevide_R1 = 57000.0; // Resistance of R1 in ohms, 12v battery
-const float kWBatteryVVdevide_R2 = 1000.0;  // Resistance of R2 in ohms, 12v battery
+// const float kWBatteryVVdevide_R1 = 57000.0; // Resistance of R1 in ohms, 12v battery
+// const float kWBatteryVVdevide_R2 = 1000.0;  // Resistance of R2 in ohms, 12v battery
+const float kWBatteryVVdevide_R1 = 102500.0; // Resistance of R1 in ohms, 24v battery (3296 potentiometer voltage divider)
+const float kWBatteryVVdevide_R2 = 2563.0;  // Resistance of R2 in ohms, 24v battery (3296 potentiometer voltage divider)
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels
 const int SCREEN_HEIGHT = 32; // OLED display height, in pixels
 
