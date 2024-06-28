@@ -250,7 +250,7 @@ void loop() {
         "Shunt I:" + String(current, 7),
         "Time   :" + formattedRemainingBatteryLife,
         "Batty %:" + String(remainingBatteryPercent, 2),
-        "Temp C:" + String(tempC, 7)
+        "Temp C :" + String(tempC, 4)
     };
 
     int screenArrayLength = sizeof(screenStringArray) / sizeof(screenStringArray[0]);
