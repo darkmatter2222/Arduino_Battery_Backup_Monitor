@@ -102,7 +102,7 @@ float getTemp();
 
 // Set OLED Screen
 void writeOledLine(String text, int line);
-void setScreen(String arr[]);
+void setScreen(String arr[], int size);
 void clearScreen();
 
 // Initializes the ADS1115 Analog-to-Digital Converter (ADC)
@@ -132,7 +132,7 @@ void setup() {
     clearScreen();
     // Print State
     tempArray[1] = "WiFi:Connecting";
-    setScreen(tempArray);
+    setScreen(tempArray, 1);
     // Serial output
     Serial.begin(115200);
     // Connect to WiFi (SSID and Password in arduino_secrets.h)
@@ -140,20 +140,20 @@ void setup() {
     // Print State
     tempArray[1] = "WiFi:Connected";
     tempArray[2] = "Configs:Downloading";
-    setScreen(tempArray);
+    setScreen(tempArray, 2);
     // using the mac_address, pull the configurations for this deployment from MongoDB
     getBatteryConfig(macAddress);
     // Print State
     tempArray[2] = "Configs:Downloaded";
     tempArray[3] = "ADS:Initializing";
-    setScreen(tempArray);
+    setScreen(tempArray, 3);
     // Set up ADC (ADS1115)
     pinMode(kLedPin, OUTPUT);
  
     initializeADS1115();
     // Print State
     tempArray[3] = "ADS:Initialized";
-    setScreen(tempArray);
+    setScreen(tempArray, 3);
 
     Serial.println("Starting...");
     // Setup complete!
@@ -253,8 +253,8 @@ void loop() {
         "Temp C:" + String(tempC, 7)
     };
 
-
-    setScreen(screenStringArray);
+    int screenArrayLength = sizeof(screenStringArray) / sizeof(screenStringArray[0]);
+    setScreen(screenStringArray, screenArrayLength);
 
     if (writeRecordingsToDB){
         writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage);
@@ -386,9 +386,9 @@ void writeOledLine(String text, int line){
     display.println(text);
 }
 
-void setScreen(String arr[]) {
+void setScreen(String arr[], int size) {
     clearScreen();
-    int size = sizeof(arr) / sizeof(arr[0]);
+    Serial.println(String(size));
     for (int i = 0; i < size; ++i) {
       writeOledLine(arr[i], i);
     }
