@@ -49,9 +49,8 @@ const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
-const int SCREEN_WIDTH = 128; // OLED display width, in pixels
+const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-
 
 // Global Variables
 WiFiClientSecure client;
@@ -112,7 +111,7 @@ void initializeADS1115();
 float takeMeasurement(int adcPin);
 
 // Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
-void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage);
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
 
 // Calculates a rolling average for a given sample and current average over a specified number of samples
 float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
@@ -257,7 +256,7 @@ void loop() {
     setScreen(screenStringArray, screenArrayLength);
 
     if (writeRecordingsToDB){
-        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage);
+        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -417,7 +416,7 @@ float takeMeasurement(int adcPin) {
   return volts;
 }
 
-void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage) {
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
     WiFiClientSecure client;
     HTTPClient http;
 
@@ -437,6 +436,7 @@ void writeToDB(float shuntVoltage, float amperage, float remainingAh, const Stri
     doc["remaining_percent"] = remainingPercent;
     doc["batteryState"] = batteryState;
     doc["batteryVoltage"] = batteryVoltage;
+    doc["batteryTempC"] = tempC;
 
     String jsonString;
     serializeJson(doc, jsonString);
