@@ -74,6 +74,8 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
+float adcOffset = 0.0;      // Global variable to store the ADC offset
+float adcCoefficient = 1.0; // Global variable to store the ADC scaling factor
 
 bool smsSent = false;
 bool currentExceeded = false;
