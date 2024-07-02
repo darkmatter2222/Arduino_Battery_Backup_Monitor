@@ -51,6 +51,7 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
+const int kCalibrationAdcPin = 1; // A1 pin on the ADS1115 for calibration
 
 // Global Variables
 WiFiClientSecure client;
@@ -74,8 +75,9 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
-float adcOffset = 0.0;      // Global variable to store the ADC offset
-float adcCoefficient = 1.0; // Global variable to store the ADC scaling factor
+float calibrationOffset = 0.0;  // Global variable to store the calibration offset
+float calibrationCoefficient = 1.0;  // Global variable to store the calibration scaling factor
+
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -97,6 +99,8 @@ void getBatteryConfig(const String& macAddress);
 
 // Initalize the OLED Screen
 void initializeOLED();
+
+void calibrateADS1115(float referenceVoltage);
 
 // get temp of env
 float getTemp();
@@ -125,6 +129,7 @@ String formatTime(long seconds);
 void sendTextMessage(const String& messageBody);
 
 void setup() {
+    pinMode(D8, INPUT);
     // Temp Vars
     String tempArray[8] = {"Starting..."};
 
@@ -164,6 +169,16 @@ int startup_loop = 0;
 
 void loop() {
     digitalWrite(kLedPin, HIGH);
+    while (digitalRead(D8) == HIGH) {
+        Serial.println("Calibrating...");
+        float referenceVoltage = 0.0;  // Assume 1V is the reference voltage for calibration
+        calibrateADS1115(referenceVoltage);  // Perform calibration using the A1 pin
+        // Optional: Add a small delay to prevent overwhelming the CPU with continuous checks
+        delay(100);
+        digitalWrite(kLedPin, LOW);
+        delay(100);
+        digitalWrite(kLedPin, HIGH);
+    }
 
     // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
@@ -369,6 +384,18 @@ void initializeOLED() {
     }
 }
 
+void calibrateADS1115(float referenceVoltage) {
+    float measuredVoltage = takeMeasurement(kCalibrationAdcPin); // A1 pin
+    if (measuredVoltage != 0) {
+        calibrationCoefficient = referenceVoltage / measuredVoltage;
+        calibrationOffset = referenceVoltage - (measuredVoltage * calibrationCoefficient);
+    } else {
+        // Log error or handle the case when measuredVoltage is zero
+        Serial.println("Error: Measured voltage is zero during calibration. Already Calibrated?");
+    }
+}
+
+
 float getTemp() {
     sensors.requestTemperatures();  // Send the command to get temperatures
     return sensors.getTempCByIndex(0); // temp in Celsius
@@ -413,9 +440,15 @@ void initializeADS1115() {
 }
 
 float takeMeasurement(int adcPin) {
-  int16_t adc = ads.readADC_SingleEnded(adcPin);
-  float volts = ads.computeVolts(adc);
-  return volts;
+    int16_t adc = ads.readADC_SingleEnded(adcPin);
+    float volts = ads.computeVolts(adc);  // Compute the voltage from ADC value
+
+    // Apply calibration only if the pin is the A1 pin
+    if (adcPin == kCalibrationAdcPin) {
+        volts = (volts * calibrationCoefficient) + calibrationOffset;  // Apply calibration adjustments
+    }
+
+    return volts;
 }
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
