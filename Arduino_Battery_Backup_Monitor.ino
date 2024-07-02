@@ -75,9 +75,7 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
-float calibrationOffset = 0.0;  // Global variable to store the calibration offset
-float calibrationCoefficient = 1.0;  // Global variable to store the calibration scaling factor
-
+int calibrationOffset = 0;  // Global variable to store the calibration offset in ADC counts
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -169,15 +167,29 @@ int startup_loop = 0;
 
 void loop() {
     digitalWrite(kLedPin, HIGH);
-    while (digitalRead(D8) == HIGH) {
+    if (digitalRead(D8) == HIGH) {
         Serial.println("Calibrating...");
-        float referenceVoltage = 0.0;  // Assume 1V is the reference voltage for calibration
-        calibrateADS1115(referenceVoltage);  // Perform calibration using the A1 pin
-        // Optional: Add a small delay to prevent overwhelming the CPU with continuous checks
-        delay(100);
-        digitalWrite(kLedPin, LOW);
-        delay(100);
-        digitalWrite(kLedPin, HIGH);
+        long totalOffset = 0;
+        int count = 0;
+
+        // Continuously read calibration data until D8 goes low
+        while (digitalRead(D8) == HIGH) {
+            int measuredCount = ads.readADC_SingleEnded(kCalibrationAdcPin);
+            totalOffset += (0 - measuredCount);  // Compute and accumulate offsets
+            count++;
+
+            digitalWrite(kLedPin, LOW);  // Visual indicator of calibration
+            delay(50);                   // Short delay to pace the readings
+            digitalWrite(kLedPin, HIGH);
+        }
+
+        // Calculate the average calibration offset if any readings were taken
+        if (count > 0) {
+            calibrationOffset = totalOffset / count;
+        }
+
+        Serial.print("Calibration completed. Offset: ");
+        Serial.println(calibrationOffset);
     }
 
     // Take a measurment of the shunt
@@ -384,17 +396,10 @@ void initializeOLED() {
     }
 }
 
-void calibrateADS1115(float referenceVoltage) {
-    float measuredVoltage = takeMeasurement(kCalibrationAdcPin); // A1 pin
-    if (measuredVoltage != 0) {
-        calibrationCoefficient = referenceVoltage / measuredVoltage;
-        calibrationOffset = referenceVoltage - (measuredVoltage * calibrationCoefficient);
-    } else {
-        // Log error or handle the case when measuredVoltage is zero
-        Serial.println("Error: Measured voltage is zero during calibration. Already Calibrated?");
-    }
+void calibrateADS1115(int measuredCount) {
+    int referenceCount = 0;  // Assuming 0 is the expected ADC count for zero input
+    calibrationOffset = referenceCount - measuredCount;
 }
-
 
 float getTemp() {
     sensors.requestTemperatures();  // Send the command to get temperatures
@@ -440,16 +445,13 @@ void initializeADS1115() {
 }
 
 float takeMeasurement(int adcPin) {
-    int16_t adc = ads.readADC_SingleEnded(adcPin);
-    float volts = ads.computeVolts(adc);  // Compute the voltage from ADC value
+    int rawAdc = ads.readADC_SingleEnded(adcPin);
+    int calibratedAdc = rawAdc + calibrationOffset;  // Apply calibration offset to the raw ADC value
 
-    // Apply calibration only if the pin is the A1 pin
-    if (adcPin == kCalibrationAdcPin) {
-        volts = (volts * calibrationCoefficient) + calibrationOffset;  // Apply calibration adjustments
-    }
-
+    float volts = ads.computeVolts(calibratedAdc);  // Convert the calibrated ADC count to volts
     return volts;
 }
+
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
     WiFiClientSecure client;
