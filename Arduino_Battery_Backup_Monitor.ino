@@ -27,11 +27,19 @@
 #include <ArduinoJson.h>
 #include "arduino_secrets.h"
 #include <time.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS D3  // Pin D3 on NodeMCU connected to the data line of DS18B20
 
 // Constants
 const int kLedPin = 2;
 const int kAnalogPin = A0;
-const int kAdcPin = 1;
+const int kShuntVoltageAdcPin = 1;
+const int kBatteryVoltageAdcPin = 0;
 const int kDefaultAvgDistance = 5;
 const float kShuntAmp = 20.0f; // 75 mV = 20 Amps
 const float kShuntDropMv = 0.075f;  // 75 millivolts
@@ -40,7 +48,9 @@ const bool kSmsEnabled = false;
 const float kDischargingThresholdAmps = 0.2f;
 const float kChargingThresholdAmps = 0.2f;
 const bool kWriteRecordingsToDB = true;
-
+const float kMaxBatteryVoltage = 29.2;
+const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
+const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 
 // Global Variables
 WiFiClientSecure client;
@@ -58,23 +68,43 @@ float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
 float shuntOhms = shuntDropMv / shuntAmp;
 float currentAverage = 0.0;
-float voltageAverage = 0.0;
+float shuntVoltageAverage = 0.0;
 bool smsEnabled = kSmsEnabled;
 float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
+float maxBatteryVoltage = kMaxBatteryVoltage;
+float adcOffset = 0.0;      // Global variable to store the ADC offset
+float adcCoefficient = 1.0; // Global variable to store the ADC scaling factor
 
 bool smsSent = false;
 bool currentExceeded = false;
 Chrono smsTimer;
 String batteryState = "Charging";
 
+// Declaration for an SSD1306 display connected to I2C (SCL, SDA pins)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+// Temp Setup
+OneWire oneWire(ONE_WIRE_BUS);  // Create a OneWire instance
+DallasTemperature sensors(&oneWire);  // Pass the OneWire reference to Dallas Temperature library
+
 // Function Prototypes
 // Connects to a WiFi network using the provided SSID and password
-void connectToWiFi(const char* ssid, const char* password);
+void connectToWiFi(const char* ssid, const char* password, int maxRetries);
 
 // Retrieves battery configuration data from a database using the MAC address
 void getBatteryConfig(const String& macAddress);
+
+// Initalize the OLED Screen
+void initializeOLED();
+
+// get temp of env
+float getTemp();
+
+// Set OLED Screen
+void writeOledLine(String text, int line);
+void setScreen(String arr[], int size);
+void clearScreen();
 
 // Initializes the ADS1115 Analog-to-Digital Converter (ADC)
 void initializeADS1115();
@@ -82,8 +112,8 @@ void initializeADS1115();
 // Takes a voltage measurement from a specified ADC pin
 float takeMeasurement(int adcPin);
 
-// Writes battery data to a database, including voltage, amperage, remaining capacity, and other details
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent);
+// Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
 
 // Calculates a rolling average for a given sample and current average over a specified number of samples
 float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
@@ -95,25 +125,36 @@ String formatTime(long seconds);
 void sendTextMessage(const String& messageBody);
 
 void setup() {
+    // Temp Vars
+    String tempArray[8] = {"Starting..."};
+
+    // Set up the OLED
+    initializeOLED();
+    clearScreen();
+    // Print State
+    tempArray[1] = "WiFi:Connecting";
+    setScreen(tempArray, 1);
     // Serial output
     Serial.begin(115200);
     // Connect to WiFi (SSID and Password in arduino_secrets.h)
-    connectToWiFi(SECRET_SSID, SECRET_PASS);
+    connectToWiFi(SECRET_SSID, SECRET_PASS, 5);  // Retry up to 5 times
+    // Print State
+    tempArray[1] = "WiFi:Connected";
+    tempArray[2] = "Configs:Downloading";
+    setScreen(tempArray, 2);
     // using the mac_address, pull the configurations for this deployment from MongoDB
     getBatteryConfig(macAddress);
-
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // Configure NTP (you might need to adjust this for your timezone)
-    Serial.println("Waiting for time sync...");
-    while (!time(nullptr)) {
-        Serial.print(".");
-        delay(1000);
-    }
-    Serial.println("\nTime synchronized");
-
+    // Print State
+    tempArray[2] = "Configs:Downloaded";
+    tempArray[3] = "ADS:Initializing";
+    setScreen(tempArray, 3);
     // Set up ADC (ADS1115)
     pinMode(kLedPin, OUTPUT);
-
+ 
     initializeADS1115();
+    // Print State
+    tempArray[3] = "ADS:Initialized";
+    setScreen(tempArray, 3);
 
     Serial.println("Starting...");
     // Setup complete!
@@ -124,11 +165,17 @@ int startup_loop = 0;
 void loop() {
     digitalWrite(kLedPin, HIGH);
 
+    // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
-    float voltage = takeMeasurement(kAdcPin);
+    float shuntVoltage = takeMeasurement(kShuntVoltageAdcPin);
+
+    // Calculate the actual battery voltage using the voltage divider formula
+    float batteryVoltageMeasured = takeMeasurement(kBatteryVoltageAdcPin);
+    float batteryVoltage = (batteryVoltageMeasured * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
+
     myChrono.restart();
 
-    voltageAverage = calculateRollingAverage(voltageAverage, voltage, rollingAvgDistance);
+    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, shuntVoltage, rollingAvgDistance);
 
     if (startup_loop < rollingAvgDistance) {
       startup_loop++;
@@ -140,7 +187,7 @@ void loop() {
     }
 
     // Calculate the current in amperes by dividing the average voltage by the shunt resistance
-    float current = voltageAverage / shuntOhms;
+    float current = shuntVoltageAverage / shuntOhms;
     // Convert the measurement interval from milliseconds to hours for capacity calculation
     float timeHours = measurementInterval / 3600000.0;
     // Calculate the amount of capacity (in ampere-hours) used in this measurement interval
@@ -187,17 +234,31 @@ void loop() {
             }
         }
     }
-
+    float tempC = getTemp();
     Serial.println("-----------|-------");
-    Serial.print("V:          "); Serial.println(String(voltage, 7));
-    Serial.print("Avg V:      "); Serial.println(String(voltageAverage, 7));
-    Serial.print("I:          "); Serial.println(String(current, 7));
+    Serial.print("Shunt V:    "); Serial.println(String(shuntVoltage, 7));
+    Serial.print("Avg Shunt V:"); Serial.println(String(shuntVoltageAverage, 7));
+    Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
-    Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);    
+    Serial.print("Remain Time:"); Serial.println(formattedRemainingBatteryLife);
+    Serial.print("Battery V:  "); Serial.println(String(batteryVoltage, 7)); // Testing
+    Serial.print("Temp C:    "); Serial.println(String(tempC, 7)); // Testing
+
+    clearScreen();
+    String screenStringArray[5] = {
+        "Batty V:" + String(batteryVoltage, 7),
+        "Shunt I:" + String(current, 7),
+        "Time   :" + formattedRemainingBatteryLife,
+        "Batty %:" + String(remainingBatteryPercent, 2),
+        "Temp C :" + String(tempC, 4)
+    };
+
+    int screenArrayLength = sizeof(screenStringArray) / sizeof(screenStringArray[0]);
+    setScreen(screenStringArray, screenArrayLength);
 
     if (writeRecordingsToDB){
-        writeToDB(voltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState);
+        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -205,23 +266,43 @@ void loop() {
 }
 
 // Function to connect to WiFi
-void connectToWiFi(const char* ssid, const char* password) {
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
+void connectToWiFi(const char* ssid, const char* password, int maxRetries = 5) {
+    int retryCount = 0;
+    bool connected = false;
 
-    WiFi.begin(ssid, password);
+    Serial.print("Attempting to connect to WiFi");
 
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
+    while (retryCount < maxRetries && !connected) {
+        WiFi.begin(ssid, password);  // Start the connection process
+
+        // Wait for connection
+        for (int i = 0; i < 10; i++) {  // Wait 5 seconds for connection
+            if (WiFi.status() == WL_CONNECTED) {
+                connected = true;
+                break;
+            }
+            delay(500);
+            Serial.print(".");
+        }
+
+        if (connected) {
+            break;
+        }
+
+        retryCount++;
+        Serial.println("\nRetry " + String(retryCount) + "/" + String(maxRetries));
     }
 
-    ipAddress = WiFi.localIP().toString();
-    macAddress = WiFi.macAddress();
-    Serial.println("");
-    Serial.print("WiFi connected");
-    Serial.print("IP address: "); Serial.println(ipAddress);
-    Serial.print("MAC address: "); Serial.println(macAddress);
+    if (connected) {
+        ipAddress = WiFi.localIP().toString();
+        macAddress = WiFi.macAddress();
+        Serial.println("\nWiFi connected");
+        Serial.print("IP address: "); Serial.println(ipAddress);
+        Serial.print("MAC address: "); Serial.println(macAddress);
+    } else {
+        Serial.println("\nFailed to connect to WiFi after retries. Rebooting...");
+        ESP.restart();  // Reboot the microcontroller
+    }
 }
 
 // Function to get battery configuration
@@ -242,7 +323,7 @@ void getBatteryConfig(const String& macAddress) {
     http.begin(client, serverPath.c_str());
     int httpResponseCode = http.POST(jsonString);
 
-    if (httpResponseCode > 0) {
+    if (httpResponseCode == 200) {
         String payload = http.getString();
         // Serial.println(payload);
         DeserializationError error = deserializeJson(configDoc, payload);
@@ -251,6 +332,7 @@ void getBatteryConfig(const String& macAddress) {
             Serial.print("deserializeJson() failed: ");
             Serial.println(error.c_str());
             // Handle the deserialization error (e.g., set default values or take appropriate action)
+            ESP.restart();  // Restart the ESP if the HTTP request fails
         } else {
             // Update global variables based on the configuration data
             batteryName = configDoc["battery_name"].as<String>();
@@ -262,6 +344,7 @@ void getBatteryConfig(const String& macAddress) {
             dischargingThresholdAmps = configDoc["dischargingThresholdAmps"].as<float>();
             chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
             writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
+            maxBatteryVoltage = configDoc["maxBatteryVoltage"].as<float>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
@@ -269,9 +352,48 @@ void getBatteryConfig(const String& macAddress) {
         Serial.print("HTTP POST request failed: ");
         Serial.println(httpResponseCode);
         // Handle the HTTP request error (e.g., set default values or take appropriate action)
+        ESP.restart();  // Restart the ESP if the HTTP request fails
     }
 
     http.end();
+}
+
+void initializeOLED() {
+    // Initialize with the I2C addr 0x3C (for the 128x32)
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+      Serial.println(F("SSD1306 allocation failed"));
+      for(;;); // Don't proceed, loop forever
+    }
+    else {
+      Serial.println(F("SSD1306 allocation success"));
+    }
+}
+
+float getTemp() {
+    sensors.requestTemperatures();  // Send the command to get temperatures
+    return sensors.getTempCByIndex(0); // temp in Celsius
+}
+
+void clearScreen() {
+    display.clearDisplay();
+    display.setTextSize(1);      // Normal 1:1 pixel scale
+    display.setTextColor(WHITE); // Draw white text
+
+    display.display();
+}
+
+void writeOledLine(String text, int line){
+    display.setCursor(0, line * 8);      // Start at top-left corner
+    display.println(text);
+}
+
+void setScreen(String arr[], int size) {
+    clearScreen();
+    Serial.println(String(size));
+    for (int i = 0; i < size; ++i) {
+      writeOledLine(arr[i], i);
+    }
+    display.display();
 }
 
 void initializeADS1115() {
@@ -296,7 +418,7 @@ float takeMeasurement(int adcPin) {
   return volts;
 }
 
-void writeToDB(float voltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState) {
+void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
     WiFiClientSecure client;
     HTTPClient http;
 
@@ -306,7 +428,7 @@ void writeToDB(float voltage, float amperage, float remainingAh, const String& r
 
     StaticJsonDocument<200> doc;
     doc["battery_name"] = batteryName;
-    doc["voltage"] = voltage;
+    doc["shuntVoltage"] = shuntVoltage;
     doc["amperage"] = amperage;
     doc["remaining_ah"] = remainingAh;
     doc["remaining_time"] = remainingTime;
@@ -315,6 +437,8 @@ void writeToDB(float voltage, float amperage, float remainingAh, const String& r
     doc["ip_address"] = ipAddress;
     doc["remaining_percent"] = remainingPercent;
     doc["batteryState"] = batteryState;
+    doc["batteryVoltage"] = batteryVoltage;
+    doc["batteryTempC"] = tempC;
 
     String jsonString;
     serializeJson(doc, jsonString);
