@@ -51,7 +51,9 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-const int kCalibrationAdcPin = 1; // A1 pin on the ADS1115 for calibration
+int calibrationOffsetA0 = 0;  // Global variable to store the calibration offset for A0
+int calibrationOffsetA1 = 0;  // Global variable to store the calibration offset for A1
+
 
 // Global Variables
 WiFiClientSecure client;
@@ -168,15 +170,20 @@ int startup_loop = 0;
 void loop() {
     digitalWrite(kLedPin, HIGH);
     if (digitalRead(D8) == HIGH) {
-        Serial.println("Calibrating...");
-        long totalOffset = 0;
-        int count = 0;
+        Serial.println("Calibrating A0 and A1...");
+        long totalOffsetA0 = 0;
+        long totalOffsetA1 = 0;
+        int countA0 = 0;
+        int countA1 = 0;
 
         // Continuously read calibration data until D8 goes low
         while (digitalRead(D8) == HIGH) {
-            int measuredCount = ads.readADC_SingleEnded(kCalibrationAdcPin);
-            totalOffset += (0 - measuredCount);  // Compute and accumulate offsets
-            count++;
+            int measuredCountA0 = ads.readADC_SingleEnded(0); // Read from A0
+            int measuredCountA1 = ads.readADC_SingleEnded(1); // Read from A1
+            totalOffsetA0 += (0 - measuredCountA0); // Compute and accumulate offsets for A0
+            totalOffsetA1 += (0 - measuredCountA1); // Compute and accumulate offsets for A1
+            countA0++;
+            countA1++;
 
             digitalWrite(kLedPin, LOW);  // Visual indicator of calibration
             delay(50);                   // Short delay to pace the readings
@@ -184,12 +191,17 @@ void loop() {
         }
 
         // Calculate the average calibration offset if any readings were taken
-        if (count > 0) {
-            calibrationOffset = totalOffset / count;
+        if (countA0 > 0) {
+            calibrationOffsetA0 = totalOffsetA0 / countA0;
+        }
+        if (countA1 > 0) {
+            calibrationOffsetA1 = totalOffsetA1 / countA1;
         }
 
-        Serial.print("Calibration completed. Offset: ");
-        Serial.println(calibrationOffset);
+        Serial.print("Calibration completed. Offset A0: ");
+        Serial.println(calibrationOffsetA0);
+        Serial.print("Calibration completed. Offset A1: ");
+        Serial.println(calibrationOffsetA1);
     }
 
     // Take a measurment of the shunt
@@ -396,11 +408,6 @@ void initializeOLED() {
     }
 }
 
-void calibrateADS1115(int measuredCount) {
-    int referenceCount = 0;  // Assuming 0 is the expected ADC count for zero input
-    calibrationOffset = referenceCount - measuredCount;
-}
-
 float getTemp() {
     sensors.requestTemperatures();  // Send the command to get temperatures
     return sensors.getTempCByIndex(0); // temp in Celsius
@@ -446,11 +453,21 @@ void initializeADS1115() {
 
 float takeMeasurement(int adcPin) {
     int rawAdc = ads.readADC_SingleEnded(adcPin);
-    int calibratedAdc = rawAdc + calibrationOffset;  // Apply calibration offset to the raw ADC value
+    int calibratedAdc;
+
+    // Apply the appropriate calibration offset based on the pin
+    if (adcPin == 0) {  // If measuring A0
+        calibratedAdc = rawAdc + calibrationOffsetA0;
+    } else if (adcPin == 1) {  // If measuring A1
+        calibratedAdc = rawAdc + calibrationOffsetA1;
+    } else {
+        calibratedAdc = rawAdc;  // Default case, no offset applied
+    }
 
     float volts = ads.computeVolts(calibratedAdc);  // Convert the calibrated ADC count to volts
     return volts;
 }
+
 
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
