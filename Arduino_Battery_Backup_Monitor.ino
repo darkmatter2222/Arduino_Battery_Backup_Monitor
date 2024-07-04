@@ -84,6 +84,11 @@ bool currentExceeded = false;
 Chrono smsTimer;
 String batteryState = "Charging";
 
+struct MeasurementValues {
+    float calculatedVoltage;
+    float measuredVoltage;
+};
+
 // Declaration for an SSD1306 display connected to I2C (SCL, SDA pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // Temp Setup
@@ -114,7 +119,7 @@ void clearScreen();
 void initializeADS1115();
 
 // Takes a voltage measurement from a specified ADC pin
-float takeMeasurement(int adcPin);
+MeasurementValues takeMeasurement(int adcPin);
 
 // Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
@@ -206,15 +211,15 @@ void loop() {
 
     // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
-    float shuntVoltage = takeMeasurement(kShuntVoltageAdcPin);
+    MeasurementValues measurementShuntValues = takeMeasurement(kShuntVoltageAdcPin);
 
     // Calculate the actual battery voltage using the voltage divider formula
-    float batteryVoltageMeasured = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = (batteryVoltageMeasured * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
+    MeasurementValues measurementBatteryValues = takeMeasurement(kBatteryVoltageAdcPin);
+    float batteryVoltage = (measurementBatteryValues.measuredVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
 
     myChrono.restart();
 
-    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, shuntVoltage, rollingAvgDistance);
+    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, measurementShuntValues.measuredVoltage, rollingAvgDistance);
 
     if (startup_loop < rollingAvgDistance) {
       startup_loop++;
@@ -275,7 +280,7 @@ void loop() {
     }
     float tempC = getTemp();
     Serial.println("-----------|-------");
-    Serial.print("Shunt V:    "); Serial.println(String(shuntVoltage, 7));
+    Serial.print("Shunt V:    "); Serial.println(String(measurementBatteryValues.measuredVoltage, 7));
     Serial.print("Avg Shunt V:"); Serial.println(String(shuntVoltageAverage, 7));
     Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
@@ -297,7 +302,7 @@ void loop() {
     setScreen(screenStringArray, screenArrayLength);
 
     if (writeRecordingsToDB){
-        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
+        writeToDB(measurementBatteryValues.measuredVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -451,21 +456,22 @@ void initializeADS1115() {
     }
 }
 
-float takeMeasurement(int adcPin) {
-    int rawAdc = ads.readADC_SingleEnded(adcPin);
+MeasurementValues takeMeasurement(int adcPin) {
+    MeasurementValues mv;
+    mv.measuredVoltage = ads.readADC_SingleEnded(adcPin);
     int calibratedAdc;
 
     // Apply the appropriate calibration offset based on the pin
     if (adcPin == 0) {  // If measuring A0
-        calibratedAdc = rawAdc + calibrationOffsetA0;
+        calibratedAdc = mv.measuredVoltage + calibrationOffsetA0;
     } else if (adcPin == 1) {  // If measuring A1
-        calibratedAdc = rawAdc + calibrationOffsetA1;
+        calibratedAdc = mv.measuredVoltage + calibrationOffsetA1;
     } else {
-        calibratedAdc = rawAdc;  // Default case, no offset applied
+        calibratedAdc = mv.measuredVoltage;  // Default case, no offset applied
     }
 
-    float volts = ads.computeVolts(calibratedAdc);  // Convert the calibrated ADC count to volts
-    return volts;
+    mv.calculatedVoltage = ads.computeVolts(calibratedAdc);  // Convert the calibrated ADC count to volts
+    return mv;
 }
 
 
