@@ -215,11 +215,11 @@ void loop() {
 
     // Calculate the actual battery voltage using the voltage divider formula
     MeasurementValues measurementBatteryValues = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = (measurementBatteryValues.measuredVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
+    float batteryVoltage = (measurementBatteryValues.calculatedVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
 
     myChrono.restart();
 
-    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, measurementShuntValues.measuredVoltage, rollingAvgDistance);
+    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, measurementShuntValues.calculatedVoltage, rollingAvgDistance);
 
     if (startup_loop < rollingAvgDistance) {
       startup_loop++;
@@ -290,9 +290,10 @@ void loop() {
     Serial.print("Temp C:    "); Serial.println(String(tempC, 7)); // Testing
 
     clearScreen();
-    String screenStringArray[5] = {
-        "Batty V:" + String(batteryVoltage, 7),
-        "Shunt I:" + String(current, 7),
+    String screenStringArray[6] = {
+        "Batty V:" + String(batteryVoltage, 6),
+        "Shunt VΔ:" + String(measurementBatteryValues.measuredVoltage, 6),
+        "Shunt I:" + String(current, 6),
         "Time   :" + formattedRemainingBatteryLife,
         "Batty %:" + String(remainingBatteryPercent, 2),
         "Temp C :" + String(tempC, 4)
