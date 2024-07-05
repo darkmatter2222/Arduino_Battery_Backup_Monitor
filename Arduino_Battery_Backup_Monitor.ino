@@ -292,7 +292,7 @@ void loop() {
     clearScreen();
     String screenStringArray[6] = {
         "Batty V:" + String(batteryVoltage, 6),
-        "Shunt VΔ:" + String(measurementBatteryValues.measuredVoltage, 6),
+        "Shunt V:" + String(measurementBatteryValues.measuredVoltage, 6),
         "Shunt I:" + String(current, 6),
         "Time   :" + formattedRemainingBatteryLife,
         "Batty %:" + String(remainingBatteryPercent, 2),
