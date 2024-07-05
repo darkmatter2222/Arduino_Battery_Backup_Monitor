@@ -32,6 +32,7 @@
 #include <Adafruit_SSD1306.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <array>
 
 #define ONE_WIRE_BUS D3  // Pin D3 on NodeMCU connected to the data line of DS18B20
 
@@ -51,7 +52,7 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-const float kShuntOhms = 0.32; // Shunt resistor value in ohms
+const float kShuntOhms = 0.5; // Shunt resistor value in ohms
 
 
 // Global Variables
@@ -221,7 +222,8 @@ void loop() {
     }
     float tempC = getTemp();
     Serial.println("-----------|-------");
-    Serial.print("Shunt V:    "); Serial.println(String(measurementShuntValues.calculatedVoltage, 7));
+    Serial.print("Shunt Calculated V:    "); Serial.println(String(measurementShuntValues.calculatedVoltage, 7));
+    Serial.print("Shunt Measured V:    "); Serial.println(String(measurementShuntValues.measuredVoltage, 7));
     Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
@@ -397,10 +399,51 @@ void initializeADS1115() {
     }
 }
 
+
+
+// Constants
+const int kRollingAverageSize = 5;  // Set the size of the rolling average
+
+// Global Variables for each ADC pin
+std::array<float, kRollingAverageSize> rollingMeasurements0{};
+std::array<float, kRollingAverageSize> rollingMeasurements1{};
+int rollingIndex0 = 0;
+int rollingIndex1 = 0;
+
 MeasurementValues takeMeasurement(int adcPin) {
     MeasurementValues mv;
-    mv.measuredVoltage = ads.readADC_SingleEnded(adcPin);
-    mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage);  // Convert the calibrated ADC count to volts
+    float currentMeasurement = ads.readADC_SingleEnded(adcPin);
+
+    // Decide which rolling average array to use based on the ADC pin
+    if (adcPin == 0) {
+        // Update rolling average for ADC Pin 0
+        rollingMeasurements0[rollingIndex0] = currentMeasurement;
+        rollingIndex0 = (rollingIndex0 + 1) % kRollingAverageSize;
+
+        // Calculate the rolling average for ADC Pin 0
+        float sum0 = 0;
+        for (float measurement : rollingMeasurements0) {
+            sum0 += measurement;
+        }
+        mv.measuredVoltage = sum0 / kRollingAverageSize;
+    } else if (adcPin == 1) {
+        // Update rolling average for ADC Pin 1
+        rollingMeasurements1[rollingIndex1] = currentMeasurement;
+        rollingIndex1 = (rollingIndex1 + 1) % kRollingAverageSize;
+
+        // Calculate the rolling average for ADC Pin 1
+        float sum1 = 0;
+        for (float measurement : rollingMeasurements1) {
+            sum1 += measurement;
+        }
+        mv.measuredVoltage = sum1 / kRollingAverageSize;
+        // Apply Calibration
+        mv.measuredVoltage = mv.measuredVoltage + 29;
+    }
+
+    // Convert the average measurement to volts for the specific pin
+    mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage);
+
     return mv;
 }
 
