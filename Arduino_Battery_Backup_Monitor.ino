@@ -51,7 +51,7 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-const float kShuntOhms = 0.05; // Shunt resistor value in ohms
+const float kShuntOhms = 0.25; // Shunt resistor value in ohms
 
 
 // Global Variables
@@ -69,8 +69,6 @@ int rollingAvgDistance = kDefaultAvgDistance;
 float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
 float shuntOhms = kShuntOhms; // Shunt resistance set to 0.25 ohms
-float currentAverage = 0.0;
-float shuntVoltageAverage = 0.0;
 bool smsEnabled = kSmsEnabled;
 float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
@@ -120,9 +118,6 @@ MeasurementValues takeMeasurement(int adcPin);
 // Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
 
-// Calculates a rolling average for a given sample and current average over a specified number of samples
-float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
-
 // Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
 
@@ -163,8 +158,6 @@ void setup() {
     // Setup complete!
 }
 
-int startup_loop = 0;
-
 void loop() {
     digitalWrite(kLedPin, HIGH);
 
@@ -174,23 +167,14 @@ void loop() {
 
     // Calculate the actual battery voltage using the voltage divider formula
     MeasurementValues measurementBatteryValues = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = (measurementBatteryValues.calculatedVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
+    float batteryVoltage = (measurementBatteryValues.calculatedVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100, because the voltage is greater than 0.256
 
     myChrono.restart();
 
-    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, measurementShuntValues.calculatedVoltage, rollingAvgDistance);
-
-    if (startup_loop < rollingAvgDistance) {
-      startup_loop++;
-      Serial.print(".");
-      return;
-    } else if (startup_loop == rollingAvgDistance) {
-      startup_loop++;
-      Serial.println("Starting...");
-    }
+    Serial.println("Starting...");
 
     // Calculate the current in amperes by dividing the average voltage by the shunt resistance
-    float current = shuntVoltageAverage / shuntOhms;
+    float current = (measurementShuntValues.calculatedVoltage / shuntOhms) * 100;
     // Convert the measurement interval from milliseconds to hours for capacity calculation
     float timeHours = measurementInterval / 3600000.0;
     // Calculate the amount of capacity (in ampere-hours) used in this measurement interval
@@ -237,8 +221,7 @@ void loop() {
     }
     float tempC = getTemp();
     Serial.println("-----------|-------");
-    Serial.print("Shunt V:    "); Serial.println(String(measurementBatteryValues.measuredVoltage, 7));
-    Serial.print("Avg Shunt V:"); Serial.println(String(shuntVoltageAverage, 7));
+    Serial.print("Shunt V:    "); Serial.println(String(measurementShuntValues.calculatedVoltage, 7));
     Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
@@ -249,7 +232,7 @@ void loop() {
     clearScreen();
     String screenStringArray[6] = {
         "Batty V:" + String(batteryVoltage, 6),
-        "Shunt V:" + String(measurementBatteryValues.measuredVoltage, 6),
+        "Shunt V:" + String(measurementShuntValues.calculatedVoltage, 6),
         "Shunt I:" + String(current, 6),
         "Time   :" + formattedRemainingBatteryLife,
         "Batty %:" + String(remainingBatteryPercent, 2),
@@ -406,7 +389,7 @@ void initializeADS1115() {
   // ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
   // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
   // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
-  ads.setGain(GAIN_SIXTEEN);  // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+  ads.setGain(GAIN_SIXTEEN);       // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
     ads.setGain(GAIN_SIXTEEN);
     if (!ads.begin()) {
         Serial.println("Failed to initialize ADS.");
@@ -417,7 +400,7 @@ void initializeADS1115() {
 MeasurementValues takeMeasurement(int adcPin) {
     MeasurementValues mv;
     mv.measuredVoltage = ads.readADC_SingleEnded(adcPin);
-    mv.calculatedVoltage = ads.computeVolts(adcPin);  // Convert the calibrated ADC count to volts
+    mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage);  // Convert the calibrated ADC count to volts
     return mv;
 }
 
@@ -461,12 +444,6 @@ void writeToDB(float shuntVoltage, float amperage, float remainingAh, const Stri
     }
 
     http.end();
-}
-
-float calculateRollingAverage(float currentAverage, float newSample, int sampleCount) {
-    currentAverage -= currentAverage / sampleCount;
-    currentAverage += newSample / sampleCount;
-    return currentAverage;
 }
 
 String formatTime(long seconds) {
