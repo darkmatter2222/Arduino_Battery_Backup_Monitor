@@ -449,7 +449,7 @@ void calibrateOffset() {
     if (digitalRead(D8) == HIGH) {
         String calibrationTempArray[8] = {"Calibrating..."};
         float sum = 0;
-        int samples = 100;
+        int samples = 1000;
         for (int i = 0; i < samples; i++) {
             sum += ads.readADC_SingleEnded(1);
             delay(50); // Wait for 50 milliseconds between samples
