@@ -53,7 +53,8 @@ const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 const float kShuntOhms = 0.30; // Shunt resistor value in ohms
-
+const int kRollingAverageSize = 5;  // Set the size of the rolling average
+float calibrationOffset = 0.0;
 
 // Global Variables
 WiFiClientSecure client;
@@ -75,6 +76,8 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
+std::array<float, kRollingAverageSize> rollingMeasurements0{};
+std::array<float, kRollingAverageSize> rollingMeasurements1{};
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -112,6 +115,7 @@ void clearScreen();
 
 // Initializes the ADS1115 Analog-to-Digital Converter (ADC)
 void initializeADS1115();
+void calibrateOffset();
 
 // Takes a voltage measurement from a specified ADC pin
 MeasurementValues takeMeasurement(int adcPin);
@@ -154,6 +158,9 @@ void setup() {
     // Print State
     tempArray[3] = "ADS:Initialized";
     setScreen(tempArray, 3);
+
+    // Calibrate if necessary
+    calibrateOffset();
 
     Serial.println("Starting...");
     // Setup complete!
@@ -399,14 +406,6 @@ void initializeADS1115() {
     }
 }
 
-
-
-// Constants
-const int kRollingAverageSize = 5;  // Set the size of the rolling average
-
-// Global Variables for each ADC pin
-std::array<float, kRollingAverageSize> rollingMeasurements0{};
-std::array<float, kRollingAverageSize> rollingMeasurements1{};
 int rollingIndex0 = 0;
 int rollingIndex1 = 0;
 
@@ -436,9 +435,7 @@ MeasurementValues takeMeasurement(int adcPin) {
         for (float measurement : rollingMeasurements1) {
             sum1 += measurement;
         }
-        mv.measuredVoltage = sum1 / kRollingAverageSize;
-        // Apply Calibration
-        mv.measuredVoltage = mv.measuredVoltage + 29;
+        mv.measuredVoltage = (sum1 / kRollingAverageSize) - calibrationOffset;
     }
 
     // Convert the average measurement to volts for the specific pin
@@ -447,7 +444,24 @@ MeasurementValues takeMeasurement(int adcPin) {
     return mv;
 }
 
-
+void calibrateOffset() {
+    pinMode(D8, INPUT); // Ensure D8 is set as input
+    if (digitalRead(D8) == HIGH) {
+        String calibrationTempArray[8] = {"Calibrating..."};
+        float sum = 0;
+        int samples = 100;
+        for (int i = 0; i < samples; i++) {
+            sum += ads.readADC_SingleEnded(1);
+            delay(50); // Wait for 50 milliseconds between samples
+        }
+        calibrationOffset = sum / samples;
+        calibrationTempArray[1] = "Offset:" + String(calibrationOffset, 6);
+        setScreen(calibrationTempArray, 1);
+        Serial.print("Calibration Offset: ");
+        Serial.println(calibrationOffset);
+        delay(2000);
+    }
+}
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
     WiFiClientSecure client;
