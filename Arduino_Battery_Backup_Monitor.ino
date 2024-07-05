@@ -32,6 +32,7 @@
 #include <Adafruit_SSD1306.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <array>
 
 #define ONE_WIRE_BUS D3  // Pin D3 on NodeMCU connected to the data line of DS18B20
 
@@ -51,6 +52,8 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
+const float kShuntOhms = 0.30; // Shunt resistor value in ohms
+
 
 // Global Variables
 WiFiClientSecure client;
@@ -66,21 +69,22 @@ String macAddress;
 int rollingAvgDistance = kDefaultAvgDistance;
 float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
-float shuntOhms = shuntDropMv / shuntAmp;
-float currentAverage = 0.0;
-float shuntVoltageAverage = 0.0;
+float shuntOhms = kShuntOhms; // Shunt resistance set to 0.25 ohms
 bool smsEnabled = kSmsEnabled;
 float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
-float adcOffset = 0.0;      // Global variable to store the ADC offset
-float adcCoefficient = 1.0; // Global variable to store the ADC scaling factor
 
 bool smsSent = false;
 bool currentExceeded = false;
 Chrono smsTimer;
 String batteryState = "Charging";
+
+struct MeasurementValues {
+    float calculatedVoltage;
+    float measuredVoltage;
+};
 
 // Declaration for an SSD1306 display connected to I2C (SCL, SDA pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -110,21 +114,16 @@ void clearScreen();
 void initializeADS1115();
 
 // Takes a voltage measurement from a specified ADC pin
-float takeMeasurement(int adcPin);
+MeasurementValues takeMeasurement(int adcPin);
 
 // Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
 
-// Calculates a rolling average for a given sample and current average over a specified number of samples
-float calculateRollingAverage(float currentAverage, float newSample, int sampleCount);
-
 // Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
 
-// Function to send a text message using Twilio API
-void sendTextMessage(const String& messageBody);
-
 void setup() {
+    pinMode(D8, INPUT);
     // Temp Vars
     String tempArray[8] = {"Starting..."};
 
@@ -160,34 +159,23 @@ void setup() {
     // Setup complete!
 }
 
-int startup_loop = 0;
-
 void loop() {
     digitalWrite(kLedPin, HIGH);
 
     // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
-    float shuntVoltage = takeMeasurement(kShuntVoltageAdcPin);
+    MeasurementValues measurementShuntValues = takeMeasurement(kShuntVoltageAdcPin);
 
     // Calculate the actual battery voltage using the voltage divider formula
-    float batteryVoltageMeasured = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = (batteryVoltageMeasured * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100
+    MeasurementValues measurementBatteryValues = takeMeasurement(kBatteryVoltageAdcPin);
+    float batteryVoltage = (measurementBatteryValues.calculatedVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100, because the voltage is greater than 0.256
 
     myChrono.restart();
 
-    shuntVoltageAverage = calculateRollingAverage(shuntVoltageAverage, shuntVoltage, rollingAvgDistance);
-
-    if (startup_loop < rollingAvgDistance) {
-      startup_loop++;
-      Serial.print(".");
-      return;
-    } else if (startup_loop == rollingAvgDistance) {
-      startup_loop++;
-      Serial.println("Starting...");
-    }
+    Serial.println("Starting...");
 
     // Calculate the current in amperes by dividing the average voltage by the shunt resistance
-    float current = shuntVoltageAverage / shuntOhms;
+    float current = (measurementShuntValues.calculatedVoltage / shuntOhms) * 100;
     // Convert the measurement interval from milliseconds to hours for capacity calculation
     float timeHours = measurementInterval / 3600000.0;
     // Calculate the amount of capacity (in ampere-hours) used in this measurement interval
@@ -214,7 +202,6 @@ void loop() {
             // Check if an SMS has not been sent yet or if it has been more than 2 hours since the last SMS.
             if (!smsSent || smsTimer.hasPassed(7200000)) { // 7200000 milliseconds = 2 hours
                 // Send an SMS message to alert that the current has exceeded 0.2 amps. Customize the message and recipient.
-                sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
                 smsSent = true; // Set the flag to indicate that an SMS has been sent.
                 batteryState = "Discharging";
                 smsTimer.restart(); // Restart the timer to track the interval for the next SMS alert.
@@ -227,7 +214,6 @@ void loop() {
             // Check if an SMS was sent when the current exceeded the threshold.
             if (smsSent) {
                 // Send an SMS message to alert that the current has dropped back below 0.2 amps. Customize the message and recipient.
-                sendTextMessage("Battery:" + batteryName + " Current has dropped below 0.2 Amps");
                 smsSent = false; // Reset the flag to allow a new SMS to be sent when the current goes above 0.2 amps again.
                 batteryState = "Charging";
                 smsTimer.restart(); // Restart the timer for timing the next SMS alert.
@@ -236,8 +222,8 @@ void loop() {
     }
     float tempC = getTemp();
     Serial.println("-----------|-------");
-    Serial.print("Shunt V:    "); Serial.println(String(shuntVoltage, 7));
-    Serial.print("Avg Shunt V:"); Serial.println(String(shuntVoltageAverage, 7));
+    Serial.print("Shunt Calculated V:    "); Serial.println(String(measurementShuntValues.calculatedVoltage, 7));
+    Serial.print("Shunt Measured V:    "); Serial.println(String(measurementShuntValues.measuredVoltage, 7));
     Serial.print("Shunt I:    "); Serial.println(String(current, 7));
     Serial.print("Remain Ah:  "); Serial.println(String(remainingCapacityAh, 7));
     Serial.print("Remain %:   "); Serial.println(String(remainingBatteryPercent, 2));
@@ -246,9 +232,10 @@ void loop() {
     Serial.print("Temp C:    "); Serial.println(String(tempC, 7)); // Testing
 
     clearScreen();
-    String screenStringArray[5] = {
-        "Batty V:" + String(batteryVoltage, 7),
-        "Shunt I:" + String(current, 7),
+    String screenStringArray[6] = {
+        "Batty V:" + String(batteryVoltage, 6),
+        "Shunt V:" + String(measurementShuntValues.calculatedVoltage, 6),
+        "Shunt I:" + String(current, 6),
         "Time   :" + formattedRemainingBatteryLife,
         "Batty %:" + String(remainingBatteryPercent, 2),
         "Temp C :" + String(tempC, 4)
@@ -258,7 +245,7 @@ void loop() {
     setScreen(screenStringArray, screenArrayLength);
 
     if (writeRecordingsToDB){
-        writeToDB(shuntVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
+        writeToDB(measurementBatteryValues.measuredVoltage, current, remainingCapacityAh, formattedRemainingBatteryLife, "", macAddress, ipAddress, remainingBatteryPercent, batteryState, batteryVoltage, tempC);
     }
 
     digitalWrite(kLedPin, LOW);
@@ -404,7 +391,7 @@ void initializeADS1115() {
   // ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
   // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
   // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
-  ads.setGain(GAIN_SIXTEEN);  // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+  ads.setGain(GAIN_SIXTEEN);       // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
     ads.setGain(GAIN_SIXTEEN);
     if (!ads.begin()) {
         Serial.println("Failed to initialize ADS.");
@@ -412,11 +399,55 @@ void initializeADS1115() {
     }
 }
 
-float takeMeasurement(int adcPin) {
-  int16_t adc = ads.readADC_SingleEnded(adcPin);
-  float volts = ads.computeVolts(adc);
-  return volts;
+
+
+// Constants
+const int kRollingAverageSize = 5;  // Set the size of the rolling average
+
+// Global Variables for each ADC pin
+std::array<float, kRollingAverageSize> rollingMeasurements0{};
+std::array<float, kRollingAverageSize> rollingMeasurements1{};
+int rollingIndex0 = 0;
+int rollingIndex1 = 0;
+
+MeasurementValues takeMeasurement(int adcPin) {
+    MeasurementValues mv;
+    float currentMeasurement = ads.readADC_SingleEnded(adcPin);
+
+    // Decide which rolling average array to use based on the ADC pin
+    if (adcPin == 0) {
+        // Update rolling average for ADC Pin 0
+        rollingMeasurements0[rollingIndex0] = currentMeasurement;
+        rollingIndex0 = (rollingIndex0 + 1) % kRollingAverageSize;
+
+        // Calculate the rolling average for ADC Pin 0
+        float sum0 = 0;
+        for (float measurement : rollingMeasurements0) {
+            sum0 += measurement;
+        }
+        mv.measuredVoltage = sum0 / kRollingAverageSize;
+    } else if (adcPin == 1) {
+        // Update rolling average for ADC Pin 1
+        rollingMeasurements1[rollingIndex1] = currentMeasurement;
+        rollingIndex1 = (rollingIndex1 + 1) % kRollingAverageSize;
+
+        // Calculate the rolling average for ADC Pin 1
+        float sum1 = 0;
+        for (float measurement : rollingMeasurements1) {
+            sum1 += measurement;
+        }
+        mv.measuredVoltage = sum1 / kRollingAverageSize;
+        // Apply Calibration
+        mv.measuredVoltage = mv.measuredVoltage + 29;
+    }
+
+    // Convert the average measurement to volts for the specific pin
+    mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage);
+
+    return mv;
 }
+
+
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
     WiFiClientSecure client;
@@ -458,12 +489,6 @@ void writeToDB(float shuntVoltage, float amperage, float remainingAh, const Stri
     http.end();
 }
 
-float calculateRollingAverage(float currentAverage, float newSample, int sampleCount) {
-    currentAverage -= currentAverage / sampleCount;
-    currentAverage += newSample / sampleCount;
-    return currentAverage;
-}
-
 String formatTime(long seconds) {
     long hours = seconds / 3600;  // Convert seconds to hours
     long remainingSeconds = seconds % 3600;
@@ -474,46 +499,4 @@ String formatTime(long seconds) {
     sprintf(formattedTime, "%02ld:%02ld:%02ld", hours, minutes, secs);
 
     return String(formattedTime);
-}
-
-// Function to send a text message using Twilio API
-void sendTextMessage(const String& messageBody) {
-    WiFiClientSecure client;
-    HTTPClient http;
-
-    client.setInsecure();  // Bypass SSL certificate verification
-
-    String serverPath = "https://api.twilio.com/2010-04-01/Accounts/" + String(SECRET_TWILIOUSERNAME) + "/Messages.json";
-
-    http.begin(client, serverPath);
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    http.setAuthorization(String(SECRET_TWILIOUSERNAME).c_str(), String(SECRET_TWILIOPASSWORD).c_str());
-
-    String postData = "To=" + String(SECRET_TWILIOTO) + "&From=" + String(SECRET_TWILIOFROM) + "&Body=" + messageBody;
-
-    int httpResponseCode = http.POST(postData);
-
-    if (httpResponseCode > 0) {
-        // Optionally handle the response content
-        String payload = http.getString();
-        Serial.println(payload);
-    } else {
-        Serial.print("HTTP POST request failed: ");
-        Serial.println(httpResponseCode);
-        // Handle the error appropriately
-    }
-
-    http.end();
-}
-
-int month() {
-    time_t now = time(nullptr);  // Get the current time as a time_t object
-    struct tm *timeStruct = localtime(&now);  // Convert time to struct tm form
-
-    return timeStruct->tm_mon + 1;  // tm_mon is months since January (0-11), so add 1 for human-readable months (1-12)
-}
-
-bool isSummer(int month) {
-    // Summer months are June to September (6 to 9)
-    return month >= 6 && month <= 9;
 }
