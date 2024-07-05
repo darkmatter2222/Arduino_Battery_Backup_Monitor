@@ -51,8 +51,6 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-int calibrationOffsetA0 = 0;  // Global variable to store the calibration offset for A0
-int calibrationOffsetA1 = 0;  // Global variable to store the calibration offset for A1
 const float kShuntOhms = 0.05; // Shunt resistor value in ohms
 
 
@@ -78,7 +76,6 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
-int calibrationOffset = 0;  // Global variable to store the calibration offset in ADC counts
 
 bool smsSent = false;
 bool currentExceeded = false;
@@ -106,8 +103,6 @@ void getBatteryConfig(const String& macAddress);
 // Initalize the OLED Screen
 void initializeOLED();
 
-void calibrateADS1115(float referenceVoltage);
-
 // get temp of env
 float getTemp();
 
@@ -130,9 +125,6 @@ float calculateRollingAverage(float currentAverage, float newSample, int sampleC
 
 // Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
-
-// Function to send a text message using Twilio API
-void sendTextMessage(const String& messageBody);
 
 void setup() {
     pinMode(D8, INPUT);
@@ -175,40 +167,6 @@ int startup_loop = 0;
 
 void loop() {
     digitalWrite(kLedPin, HIGH);
-    if (digitalRead(D8) == HIGH) {
-        Serial.println("Calibrating A0 and A1...");
-        long totalOffsetA0 = 0;
-        long totalOffsetA1 = 0;
-        int countA0 = 0;
-        int countA1 = 0;
-
-        // Continuously read calibration data until D8 goes low
-        while (digitalRead(D8) == HIGH) {
-            int measuredCountA0 = ads.readADC_SingleEnded(0); // Read from A0
-            int measuredCountA1 = ads.readADC_SingleEnded(1); // Read from A1
-            totalOffsetA0 += (0 - measuredCountA0); // Compute and accumulate offsets for A0
-            totalOffsetA1 += (0 - measuredCountA1); // Compute and accumulate offsets for A1
-            countA0++;
-            countA1++;
-
-            digitalWrite(kLedPin, LOW);  // Visual indicator of calibration
-            delay(50);                   // Short delay to pace the readings
-            digitalWrite(kLedPin, HIGH);
-        }
-
-        // Calculate the average calibration offset if any readings were taken
-        if (countA0 > 0) {
-            calibrationOffsetA0 = totalOffsetA0 / countA0;
-        }
-        if (countA1 > 0) {
-            calibrationOffsetA1 = totalOffsetA1 / countA1;
-        }
-
-        Serial.print("Calibration completed. Offset A0: ");
-        Serial.println(calibrationOffsetA0);
-        Serial.print("Calibration completed. Offset A1: ");
-        Serial.println(calibrationOffsetA1);
-    }
 
     // Take a measurment of the shunt
     float measurementInterval = myChrono.elapsed();
@@ -259,7 +217,6 @@ void loop() {
             // Check if an SMS has not been sent yet or if it has been more than 2 hours since the last SMS.
             if (!smsSent || smsTimer.hasPassed(7200000)) { // 7200000 milliseconds = 2 hours
                 // Send an SMS message to alert that the current has exceeded 0.2 amps. Customize the message and recipient.
-                sendTextMessage("Battery:" + batteryName + " Current exceeds 0.2 Amps");
                 smsSent = true; // Set the flag to indicate that an SMS has been sent.
                 batteryState = "Discharging";
                 smsTimer.restart(); // Restart the timer to track the interval for the next SMS alert.
@@ -272,7 +229,6 @@ void loop() {
             // Check if an SMS was sent when the current exceeded the threshold.
             if (smsSent) {
                 // Send an SMS message to alert that the current has dropped back below 0.2 amps. Customize the message and recipient.
-                sendTextMessage("Battery:" + batteryName + " Current has dropped below 0.2 Amps");
                 smsSent = false; // Reset the flag to allow a new SMS to be sent when the current goes above 0.2 amps again.
                 batteryState = "Charging";
                 smsTimer.restart(); // Restart the timer for timing the next SMS alert.
@@ -461,18 +417,7 @@ void initializeADS1115() {
 MeasurementValues takeMeasurement(int adcPin) {
     MeasurementValues mv;
     mv.measuredVoltage = ads.readADC_SingleEnded(adcPin);
-    int calibratedAdc;
-
-    // Apply the appropriate calibration offset based on the pin
-    if (adcPin == 0) {  // If measuring A0
-        calibratedAdc = mv.measuredVoltage + calibrationOffsetA0;
-    } else if (adcPin == 1) {  // If measuring A1
-        calibratedAdc = mv.measuredVoltage + calibrationOffsetA1;
-    } else {
-        calibratedAdc = mv.measuredVoltage;  // Default case, no offset applied
-    }
-
-    mv.calculatedVoltage = ads.computeVolts(calibratedAdc);  // Convert the calibrated ADC count to volts
+    mv.calculatedVoltage = ads.computeVolts(adcPin);  // Convert the calibrated ADC count to volts
     return mv;
 }
 
@@ -534,46 +479,4 @@ String formatTime(long seconds) {
     sprintf(formattedTime, "%02ld:%02ld:%02ld", hours, minutes, secs);
 
     return String(formattedTime);
-}
-
-// Function to send a text message using Twilio API
-void sendTextMessage(const String& messageBody) {
-    WiFiClientSecure client;
-    HTTPClient http;
-
-    client.setInsecure();  // Bypass SSL certificate verification
-
-    String serverPath = "https://api.twilio.com/2010-04-01/Accounts/" + String(SECRET_TWILIOUSERNAME) + "/Messages.json";
-
-    http.begin(client, serverPath);
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-    http.setAuthorization(String(SECRET_TWILIOUSERNAME).c_str(), String(SECRET_TWILIOPASSWORD).c_str());
-
-    String postData = "To=" + String(SECRET_TWILIOTO) + "&From=" + String(SECRET_TWILIOFROM) + "&Body=" + messageBody;
-
-    int httpResponseCode = http.POST(postData);
-
-    if (httpResponseCode > 0) {
-        // Optionally handle the response content
-        String payload = http.getString();
-        Serial.println(payload);
-    } else {
-        Serial.print("HTTP POST request failed: ");
-        Serial.println(httpResponseCode);
-        // Handle the error appropriately
-    }
-
-    http.end();
-}
-
-int month() {
-    time_t now = time(nullptr);  // Get the current time as a time_t object
-    struct tm *timeStruct = localtime(&now);  // Convert time to struct tm form
-
-    return timeStruct->tm_mon + 1;  // tm_mon is months since January (0-11), so add 1 for human-readable months (1-12)
-}
-
-bool isSummer(int month) {
-    // Summer months are June to September (6 to 9)
-    return month >= 6 && month <= 9;
 }
