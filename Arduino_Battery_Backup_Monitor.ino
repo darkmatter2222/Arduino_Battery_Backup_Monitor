@@ -53,6 +53,7 @@ const int SCREEN_WIDTH = 128; // OLED display width, in pixels
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 int calibrationOffsetA0 = 0;  // Global variable to store the calibration offset for A0
 int calibrationOffsetA1 = 0;  // Global variable to store the calibration offset for A1
+const float kShuntOhms = 0.05; // Shunt resistor value in ohms
 
 
 // Global Variables
@@ -69,7 +70,7 @@ String macAddress;
 int rollingAvgDistance = kDefaultAvgDistance;
 float shuntAmp = kShuntAmp; // 75 mV = 20 Amps
 float shuntDropMv = kShuntDropMv;  // 75 millivolts
-float shuntOhms = shuntDropMv / shuntAmp;
+float shuntOhms = kShuntOhms; // Shunt resistance set to 0.25 ohms
 float currentAverage = 0.0;
 float shuntVoltageAverage = 0.0;
 bool smsEnabled = kSmsEnabled;
