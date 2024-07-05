@@ -51,7 +51,7 @@ const bool kWriteRecordingsToDB = true;
 const float kMaxBatteryVoltage = 29.2;
 const int SCREEN_WIDTH = 128; // OLED display width, in pixels 
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
-const float kShuntOhms = 0.25; // Shunt resistor value in ohms
+const float kShuntOhms = 0.32; // Shunt resistor value in ohms
 
 
 // Global Variables
