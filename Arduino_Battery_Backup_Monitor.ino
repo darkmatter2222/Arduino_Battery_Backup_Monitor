@@ -54,7 +54,7 @@ const int SCREEN_WIDTH = 128; // OLED display width, in pixels
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 const float kShuntOhms = 0.30; // Shunt resistor value in ohms
 const int kRollingAverageSize = 5;  // Set the size of the rolling average
-float calibrationOffset = 0.0;
+const float kCalibrationOffset = 0.0;
 
 // Global Variables
 WiFiClientSecure client;
@@ -76,6 +76,7 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
+float calibrationOffset = kCalibrationOffset;
 std::array<float, kRollingAverageSize> rollingMeasurements0{};
 std::array<float, kRollingAverageSize> rollingMeasurements1{};
 
@@ -122,6 +123,7 @@ MeasurementValues takeMeasurement(int adcPin);
 
 // Writes battery data to a database, including shuntVoltage, amperage, remaining capacity, and other details
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, float batteryVoltage, float tempC);
+void saveCalibration(const String& macAddress, float calibrationValue);
 
 // Formats a given time in seconds into a string in the format "HH:MM:SS"
 String formatTime(long seconds);
@@ -339,6 +341,7 @@ void getBatteryConfig(const String& macAddress) {
             chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
             writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
             maxBatteryVoltage = configDoc["maxBatteryVoltage"].as<float>();
+            calibrationOffset = configDoc["adc1115A1CalibrationOffset"].as<float>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
@@ -447,20 +450,43 @@ MeasurementValues takeMeasurement(int adcPin) {
 void calibrateOffset() {
     pinMode(D8, INPUT); // Ensure D8 is set as input
     if (digitalRead(D8) == HIGH) {
-        String calibrationTempArray[8] = {"Calibrating..."};
+        clearScreen();
+        display.setTextSize(1);
+        display.setCursor(0, 0);
+        display.println("Calibrating...");
+
         float sum = 0;
         int samples = 1000;
         for (int i = 0; i < samples; i++) {
             sum += ads.readADC_SingleEnded(1);
             delay(50); // Wait for 50 milliseconds between samples
+            
+            // Update progress bar on the OLED
+            int progress = (i + 1) * 100 / samples; // Calculate progress in percentage
+            displayProgressBar(progress);
         }
         calibrationOffset = sum / samples;
-        calibrationTempArray[1] = "Offset:" + String(calibrationOffset, 6);
-        setScreen(calibrationTempArray, 1);
-        Serial.print("Calibration Offset: ");
-        Serial.println(calibrationOffset);
-        delay(2000);
+        
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.print("Calibration Complete");
+        display.setCursor(0, 8);
+        display.print("Offset: " + String(calibrationOffset, 6));
+        display.display(); // Display the final message
+        // Save calibration to the database after calibration is complete
+        saveCalibration(macAddress, calibrationOffset);
+        display.setCursor(0, 16);
+        display.print("Saved...");
+        display.display(); // Display the final message
+        delay(2000); // Hold the final message for 2 seconds
     }
+}
+
+void displayProgressBar(int progress) {
+    display.drawRect(0, 16, 124, 8, WHITE); // Draw progress bar border
+    display.fillRect(2, 18, progress * 120 / 100, 4, WHITE); // Fill progress inside the border based on the current progress
+    display.display(); // Update display with the progress
+    display.fillRect(2, 18, 120, 4, BLACK); // Clear the progress area for the next update
 }
 
 void writeToDB(float shuntVoltage, float amperage, float remainingAh, const String& remainingTime, const String& state, const String& macAddress, const String& ipAddress, float remainingPercent, String batteryState, float batteryVoltage, float tempC) {
@@ -501,6 +527,43 @@ void writeToDB(float shuntVoltage, float amperage, float remainingAh, const Stri
     }
 
     http.end();
+}
+
+void saveCalibration(const String& macAddress, float calibrationValue) {
+    WiFiClientSecure client;
+    HTTPClient http;
+    
+    // Prepare the JSON document with the MAC address and calibration value
+    StaticJsonDocument<200> doc;
+    doc["mac_address"] = macAddress;
+    doc["calibration_value"] = calibrationValue;
+    
+    String jsonString;
+    serializeJson(doc, jsonString);  // Serialize the JSON data to a string
+
+    // Set up the HTTPS connection
+    client.setInsecure();  // Note: Only use setInsecure() in non-production environments
+    http.addHeader("Content-Type", "application/json");
+    String serverPath = "https://us-east-1.aws.data.mongodb-api.com/app/batterymanagementv1-jkqqf/endpoint/SaveCalibrationV1?secret=" + String(SECRET_MONGODBSECRET);
+
+    // Begin the HTTP POST request
+    http.begin(client, serverPath.c_str());
+    int httpResponseCode = http.POST(jsonString);
+
+    if (httpResponseCode == 200) {
+        // Optionally log the response or handle it further
+        Serial.print("Response code: ");
+        Serial.println(httpResponseCode);
+        String payload = http.getString();  // Get the response payload
+        Serial.println(payload);
+    } else {
+        Serial.print("HTTP POST request failed with error: ");
+        Serial.println(httpResponseCode);
+        String payload = http.getString();  // Get the response payload
+        Serial.println(payload);
+    }
+
+    http.end();  // Close the HTTP connection
 }
 
 String formatTime(long seconds) {
