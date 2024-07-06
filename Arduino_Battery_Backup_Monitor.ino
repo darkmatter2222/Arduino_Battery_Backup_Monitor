@@ -54,7 +54,8 @@ const int SCREEN_WIDTH = 128; // OLED display width, in pixels
 const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 const float kShuntOhms = 0.30; // Shunt resistor value in ohms
 const int kRollingAverageSize = 5;  // Set the size of the rolling average
-const float kCalibrationOffset = 0.0;
+const float kCalibrationOffsetA0 = 0.0; // Initial calibration offset for A0
+const float kCalibrationOffsetA1 = 0.0; // Initial calibration offset for A1
 
 // Global Variables
 WiFiClientSecure client;
@@ -76,7 +77,8 @@ float dischargingThresholdAmps = kDischargingThresholdAmps;
 float chargingThresholdAmps = kChargingThresholdAmps;
 bool writeRecordingsToDB = kWriteRecordingsToDB;
 float maxBatteryVoltage = kMaxBatteryVoltage;
-float calibrationOffset = kCalibrationOffset;
+float calibrationOffsetA0 = kCalibrationOffsetA0;
+float calibrationOffsetA1 = kCalibrationOffsetA1;
 std::array<float, kRollingAverageSize> rollingMeasurements0{};
 std::array<float, kRollingAverageSize> rollingMeasurements1{};
 
@@ -341,7 +343,8 @@ void getBatteryConfig(const String& macAddress) {
             chargingThresholdAmps = configDoc["chargingThresholdAmps"].as<float>();
             writeRecordingsToDB = configDoc["writeRecordingsToDB"].as<bool>();
             maxBatteryVoltage = configDoc["maxBatteryVoltage"].as<float>();
-            calibrationOffset = configDoc["adc1115A1CalibrationOffset"].as<float>();
+            calibrationOffsetA0 = configDoc["adc1115A0CalibrationOffset"].as<float>();
+            calibrationOffsetA1 = configDoc["adc1115A1CalibrationOffset"].as<float>();
 
             remainingCapacityAh = batteryCapacityAh;
         }
@@ -415,34 +418,38 @@ int rollingIndex1 = 0;
 MeasurementValues takeMeasurement(int adcPin) {
     MeasurementValues mv;
     float currentMeasurement = ads.readADC_SingleEnded(adcPin);
-
+    
     // Decide which rolling average array to use based on the ADC pin
-    if (adcPin == 0) {
-        // Update rolling average for ADC Pin 0
+    if (adcPin == kBatteryVoltageAdcPin) { // Assuming A0 is for battery voltage
+        // Update rolling average for ADC Pin A0
         rollingMeasurements0[rollingIndex0] = currentMeasurement;
         rollingIndex0 = (rollingIndex0 + 1) % kRollingAverageSize;
 
-        // Calculate the rolling average for ADC Pin 0
+        // Calculate the rolling average for ADC Pin A0
         float sum0 = 0;
         for (float measurement : rollingMeasurements0) {
             sum0 += measurement;
         }
         mv.measuredVoltage = sum0 / kRollingAverageSize;
-    } else if (adcPin == 1) {
-        // Update rolling average for ADC Pin 1
+
+        // Apply calibration offset for A0
+        mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage - calibrationOffsetA0);
+    } 
+    else if (adcPin == kShuntVoltageAdcPin) { // Assuming A1 is for shunt voltage
+        // Update rolling average for ADC Pin A1
         rollingMeasurements1[rollingIndex1] = currentMeasurement;
         rollingIndex1 = (rollingIndex1 + 1) % kRollingAverageSize;
 
-        // Calculate the rolling average for ADC Pin 1
+        // Calculate the rolling average for ADC Pin A1
         float sum1 = 0;
         for (float measurement : rollingMeasurements1) {
             sum1 += measurement;
         }
-        mv.measuredVoltage = (sum1 / kRollingAverageSize) - calibrationOffset;
-    }
+        mv.measuredVoltage = sum1 / kRollingAverageSize;
 
-    // Convert the average measurement to volts for the specific pin
-    mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage);
+        // Apply calibration offset for A1
+        mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage - calibrationOffsetA1);
+    }
 
     return mv;
 }
@@ -455,29 +462,31 @@ void calibrateOffset() {
         display.setCursor(0, 0);
         display.println("Calibrating...");
 
-        float sum = 0;
+        float sumA0 = 0, sumA1 = 0;
         int samples = 1000;
         for (int i = 0; i < samples; i++) {
-            sum += ads.readADC_SingleEnded(1);
+            sumA0 += ads.readADC_SingleEnded(0);
+            sumA1 += ads.readADC_SingleEnded(1);
             delay(50); // Wait for 50 milliseconds between samples
             
             // Update progress bar on the OLED
             int progress = (i + 1) * 100 / samples; // Calculate progress in percentage
             displayProgressBar(progress);
         }
-        calibrationOffset = sum / samples;
-        
+        float calibrationOffsetA0 = sumA0 / samples;
+        float calibrationOffsetA1 = sumA1 / samples;
+
         display.clearDisplay();
         display.setCursor(0, 0);
         display.print("Calibration Complete");
         display.setCursor(0, 8);
-        display.print("Offset: " + String(calibrationOffset, 6));
-        display.display(); // Display the final message
-        // Save calibration to the database after calibration is complete
-        saveCalibration(macAddress, calibrationOffset);
+        display.print("Offset A0: " + String(calibrationOffsetA0, 6));
         display.setCursor(0, 16);
-        display.print("Saved...");
+        display.print("Offset A1: " + String(calibrationOffsetA1, 6));
         display.display(); // Display the final message
+        
+        // Save calibration to the database after calibration is complete
+        saveCalibration(macAddress, calibrationOffsetA0, calibrationOffsetA1);
         delay(2000); // Hold the final message for 2 seconds
     }
 }
@@ -529,14 +538,15 @@ void writeToDB(float shuntVoltage, float amperage, float remainingAh, const Stri
     http.end();
 }
 
-void saveCalibration(const String& macAddress, float calibrationValue) {
+void saveCalibration(const String& macAddress, float calibrationOffsetA0, float calibrationOffsetA1) {
     WiFiClientSecure client;
     HTTPClient http;
     
-    // Prepare the JSON document with the MAC address and calibration value
-    StaticJsonDocument<200> doc;
+    // Prepare the JSON document with the MAC address and calibration values
+    StaticJsonDocument<300> doc;
     doc["mac_address"] = macAddress;
-    doc["calibration_value"] = calibrationValue;
+    doc["calibration_value_a0"] = calibrationOffsetA0;
+    doc["calibration_value_a1"] = calibrationOffsetA1;
     
     String jsonString;
     serializeJson(doc, jsonString);  // Serialize the JSON data to a string
@@ -551,7 +561,6 @@ void saveCalibration(const String& macAddress, float calibrationValue) {
     int httpResponseCode = http.POST(jsonString);
 
     if (httpResponseCode == 200) {
-        // Optionally log the response or handle it further
         Serial.print("Response code: ");
         Serial.println(httpResponseCode);
         String payload = http.getString();  // Get the response payload
