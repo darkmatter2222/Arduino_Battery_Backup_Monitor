@@ -179,7 +179,7 @@ void loop() {
 
     // Calculate the actual battery voltage using the voltage divider formula
     MeasurementValues measurementBatteryValues = takeMeasurement(kBatteryVoltageAdcPin);
-    float batteryVoltage = (measurementBatteryValues.calculatedVoltage * maxBatteryVoltage)/0.256; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100, because the voltage is greater than 0.256
+    float batteryVoltage = measurementBatteryValues.calculatedVoltage; // highest = 29.2 (batteryVoltageMeasured * 29.2)/100, because the voltage is greater than 0.256
 
     myChrono.restart();
 
@@ -433,7 +433,10 @@ MeasurementValues takeMeasurement(int adcPin) {
         mv.measuredVoltage = sum0 / kRollingAverageSize;
 
         // Apply calibration offset for A0
-        mv.calculatedVoltage = ads.computeVolts(mv.measuredVoltage - calibrationOffsetA0);
+        float voltage = currentMeasurement * 0.0078125 / 1000;  // ADS1115 @ +/- 0.256V (16-bit) with gain 16x
+        float actualVoltage = (voltage) * (1110.0 / 10.0);
+        Serial.println("Calc V:" + String(actualVoltage, 7));
+        mv.calculatedVoltage = actualVoltage;
     } 
     else if (adcPin == kShuntVoltageAdcPin) { // Assuming A1 is for shunt voltage
         // Update rolling average for ADC Pin A1
